@@ -25,13 +25,15 @@ public enum ExperimentState
 public enum Reaction
 {
     RE_UP,
-    RE_DOWN
+    RE_DOWN,
+    RE_NONE
 }
 
 [Serializable]
 public class Trial
 {
     public Reaction Reaction;
+    public int Response;
     public int Step;
     public int Step2;
     public float Value;
@@ -74,6 +76,11 @@ public class Evaluation : MonoBehaviour
 
     public int ActiveTrialNumber;
     public Trial ActiveTrial;
+
+    public const int RESPONSE_MIN = -3;
+    public const int RESPONSE_MAX = 3;
+
+    public int ResponseSelection;
 
     public int TotalTrials;
 
@@ -232,11 +239,44 @@ public class Evaluation : MonoBehaviour
         offsetYaw = 0;
     }
 
+    public void AdjustResponse(int delta)
+    {
+        if (State != ExperimentState.ES_QUESTION)
+            return;
+
+        ResponseSelection = Mathf.Clamp(
+            ResponseSelection + delta,
+            RESPONSE_MIN,
+            RESPONSE_MAX);
+    }
+
+    public void SubmitResponse()
+    {
+        if (State != ExperimentState.ES_QUESTION)
+            return;
+
+        ActiveTrial.Response = ResponseSelection;
+
+        if (ResponseSelection < 0)
+            ActiveTrial.Reaction = Reaction.RE_UP;
+        else if (ResponseSelection > 0)
+            ActiveTrial.Reaction = Reaction.RE_DOWN;
+        else
+            ActiveTrial.Reaction = Reaction.RE_NONE;
+
+        StateChange();
+    }
+
     public void recenterPose()
+    {
+        recenterPose(0);
+    }
+
+    public void recenterPose(float yaw)
     {
         reset();
 
-        resetYaw = -getYaw();
+        resetYaw = -getYaw() + yaw;
         resetPos = -getPos();
     }
 
@@ -281,7 +321,7 @@ public class Evaluation : MonoBehaviour
             {
                 Trial trial = allTrials[i];
 
-                writer.WriteLine($"{trial.Value}\t{trial.Value2}\t{trial.Reaction}");
+                writer.WriteLine($"{trial.Value}\t{trial.Value2}\t{trial.Reaction}\t{trial.Response}");
             }
         }
 
@@ -365,6 +405,8 @@ public class Evaluation : MonoBehaviour
             case ExperimentState.ES_ACTIVE:
 
                 State = ExperimentState.ES_QUESTION;
+                ResponseSelection = 0;
+                ActiveTrial.Response = 0;
                 writeData("ES_QUESTION");
 
                 break;

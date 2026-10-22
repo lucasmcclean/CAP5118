@@ -44046,7 +44046,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fbb26b47c36f9d34ba0c2b237dc8a239, type: 3}
   m_Name: 
   m_EditorClassIdentifier: '::'
-  DISTANCE: 2.5
+  DISTANCE: 1
   ANGLE: 1.5707964
   VALUES_MIN: 0.6
   VALUES_MAX: 1.4
@@ -44073,10 +44073,12 @@ MonoBehaviour:
   ActiveTrialNumber: 0
   ActiveTrial:
     Reaction: 0
+    Response: 0
     Step: 0
     Step2: 0
     Value: 0
     Value2: 0
+  ResponseSelection: 0
   TotalTrials: 0
 --- !u!4 &1453692684
 Transform:

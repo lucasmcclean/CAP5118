@@ -109,7 +109,10 @@ public class ButtonHandler : MonoBehaviour
     {
         Debug.Log("A button pressed");
 
-//        evaluation.StateChange();
+        if (evaluation.State == ExperimentState.ES_QUESTION)
+        {
+            evaluation.SubmitResponse();
+        }
     }
 
     private void OnBPressed()
@@ -137,12 +140,9 @@ public class ButtonHandler : MonoBehaviour
     {
         Debug.Log("Thumbstick LEFT");
 
-        if (evaluation.EXP_TYPE == ExperimentType.ET_CURVATURE
-            && evaluation.State == ExperimentState.ES_QUESTION)
+        if (evaluation.State == ExperimentState.ES_QUESTION)
         {
-            evaluation.ActiveTrial.Reaction = Reaction.RE_UP;
-
-            evaluation.StateChange();
+            evaluation.AdjustResponse(-1);
         }
     }
 
@@ -150,38 +150,19 @@ public class ButtonHandler : MonoBehaviour
     {
         Debug.Log("Thumbstick RIGHT");
 
-        if (evaluation.EXP_TYPE == ExperimentType.ET_CURVATURE
-            && evaluation.State == ExperimentState.ES_QUESTION)
+        if (evaluation.State == ExperimentState.ES_QUESTION)
         {
-            evaluation.ActiveTrial.Reaction = Reaction.RE_DOWN;
-
-            evaluation.StateChange();
+            evaluation.AdjustResponse(1);
         }
     }
 
     private void OnThumbstickUp()
     {
         Debug.Log("Thumbstick UP");
-
-        if ((evaluation.EXP_TYPE == ExperimentType.ET_ROTATION || evaluation.EXP_TYPE == ExperimentType.ET_TRANSLATION)
-            && evaluation.State == ExperimentState.ES_QUESTION)
-        {
-            evaluation.ActiveTrial.Reaction = Reaction.RE_UP;
-
-            evaluation.StateChange();
-        }
     }
 
     private void OnThumbstickDown()
     {
         Debug.Log("Thumbstick DOWN");
-
-        if ((evaluation.EXP_TYPE == ExperimentType.ET_ROTATION || evaluation.EXP_TYPE == ExperimentType.ET_TRANSLATION)
-            && evaluation.State == ExperimentState.ES_QUESTION)
-        {
-            evaluation.ActiveTrial.Reaction = Reaction.RE_DOWN;
-
-            evaluation.StateChange();
-        }
     }
 }

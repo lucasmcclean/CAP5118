@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using UnityEngine.UI;
 
 [DefaultExecutionOrder(100)]
 public class RedirectionController : MonoBehaviour
@@ -13,12 +14,18 @@ public class RedirectionController : MonoBehaviour
     float c_yawOffset = 0;
     float e_maxAngle = 0;
     float e_maxDistance = 0;
+    float e_virtualYaw = 0;
 
     const double DTOR = Mathf.PI / 180.0;
 
     public GameObject quad;
     public GameObject quad_user;
     public GameObject path;
+
+    float c_pathYaw = 0;
+    Vector3 c_pathPivot = new Vector3(0, 0, 0);
+    Vector3 c_pathHomePos;
+    Quaternion c_pathHomeRot;
 
     Texture2D pReadyQuestion_;
     Texture2D pQuestionR_;
@@ -46,6 +53,12 @@ public class RedirectionController : MonoBehaviour
     Texture2D[] pSlideT_;
     const int SLIDES_C = 7;
     Texture2D[] pSlideC_;
+
+    GameObject questionUI_;
+    Image[] questionBoxes_;
+    Text[] questionLabels_;
+    readonly Color32 questionBoxColor_ = new Color32(229, 231, 235, 255);
+    readonly Color32 questionBoxSelectedColor_ = new Color32(47, 111, 237, 255);
 
     //NOTE: Not very efficient, but numerically stable
     float reducePeriodic(float p)
@@ -164,6 +177,149 @@ public class RedirectionController : MonoBehaviour
         pSlideC_[4] = p4_;
         pSlideC_[5] = p5C_;
         pSlideC_[6] = p6_;
+
+        c_pathHomePos = path.transform.localPosition;
+        c_pathHomeRot = path.transform.localRotation;
+        ApplyPathYaw(c_pathYaw);
+
+        BuildQuestionScale();
+    }
+
+    private void BuildQuestionScale()
+    {
+        questionUI_ = new GameObject("QuestionScale");
+        questionUI_.transform.SetParent(quad.transform, false);
+
+        Canvas canvas = questionUI_.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 10;
+
+        RectTransform canvasRect = questionUI_.GetComponent<RectTransform>();
+        canvasRect.sizeDelta = new Vector2(800f, 600f);
+        canvasRect.localPosition = new Vector3(0f, 0f, -0.01f);
+        canvasRect.localRotation = Quaternion.identity;
+        canvasRect.localScale = Vector3.one * (1f / 800f);
+
+        OVRCameraRig rig = cameraRig.GetComponent<OVRCameraRig>();
+        if (rig != null)
+        {
+            Camera eyeCamera = rig.centerEyeAnchor.GetComponent<Camera>();
+            if (eyeCamera != null)
+                canvas.worldCamera = eyeCamera;
+        }
+
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (font == null)
+            font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+        int optionCount = Evaluation.RESPONSE_MAX - Evaluation.RESPONSE_MIN + 1;
+        questionBoxes_ = new Image[optionCount];
+        questionLabels_ = new Text[optionCount];
+
+        const float boxSize = 76f;
+        const float boxGap = 12f;
+        const float boxY = -145f;
+        float totalWidth = optionCount * boxSize + (optionCount - 1) * boxGap;
+        float firstX = -totalWidth * 0.5f + boxSize * 0.5f;
+
+        for (int i = 0; i < optionCount; i++)
+        {
+            int value = Evaluation.RESPONSE_MIN + i;
+
+            GameObject boxGO = new GameObject("Answer " + value, typeof(RectTransform), typeof(Image));
+            boxGO.transform.SetParent(questionUI_.transform, false);
+
+            RectTransform boxRect = boxGO.GetComponent<RectTransform>();
+            boxRect.anchorMin = new Vector2(0.5f, 0.5f);
+            boxRect.anchorMax = new Vector2(0.5f, 0.5f);
+            boxRect.pivot = new Vector2(0.5f, 0.5f);
+            boxRect.anchoredPosition = new Vector2(firstX + i * (boxSize + boxGap), boxY);
+            boxRect.sizeDelta = new Vector2(boxSize, boxSize);
+
+            Image boxImage = boxGO.GetComponent<Image>();
+            boxImage.raycastTarget = false;
+            boxImage.color = questionBoxColor_;
+            questionBoxes_[i] = boxImage;
+
+            Outline outline = boxGO.AddComponent<Outline>();
+            outline.effectColor = new Color32(40, 40, 40, 255);
+            outline.effectDistance = new Vector2(2f, -2f);
+
+            GameObject labelGO = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            labelGO.transform.SetParent(boxGO.transform, false);
+
+            RectTransform labelRect = labelGO.GetComponent<RectTransform>();
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            Text label = labelGO.GetComponent<Text>();
+            label.font = font;
+            label.fontSize = 46;
+            label.fontStyle = FontStyle.Bold;
+            label.alignment = TextAnchor.MiddleCenter;
+            label.raycastTarget = false;
+            label.color = Color.black;
+            label.text = value.ToString();
+            questionLabels_[i] = label;
+        }
+
+        CreateQuestionText(
+            "Hint",
+            "Flick stick left / right to select, then press A",
+            new Vector2(0f, -250f),
+            24,
+            new Color32(70, 70, 70, 255),
+            font);
+
+        questionUI_.SetActive(false);
+    }
+
+    private void CreateQuestionText(
+        string name,
+        string text,
+        Vector2 position,
+        int fontSize,
+        Color color,
+        Font font)
+    {
+        GameObject textGO = new GameObject(name, typeof(RectTransform), typeof(Text));
+        textGO.transform.SetParent(questionUI_.transform, false);
+
+        RectTransform textRect = textGO.GetComponent<RectTransform>();
+        textRect.anchorMin = new Vector2(0.5f, 0.5f);
+        textRect.anchorMax = new Vector2(0.5f, 0.5f);
+        textRect.pivot = new Vector2(0.5f, 0.5f);
+        textRect.anchoredPosition = position;
+        textRect.sizeDelta = new Vector2(760f, 40f);
+
+        Text label = textGO.GetComponent<Text>();
+        label.font = font;
+        label.fontSize = fontSize;
+        label.alignment = TextAnchor.MiddleCenter;
+        label.horizontalOverflow = HorizontalWrapMode.Overflow;
+        label.verticalOverflow = VerticalWrapMode.Overflow;
+        label.raycastTarget = false;
+        label.color = color;
+        label.text = text;
+    }
+
+    private void RefreshQuestionScale()
+    {
+        if (questionBoxes_ == null)
+            return;
+
+        for (int i = 0; i < questionBoxes_.Length; i++)
+        {
+            int value = Evaluation.RESPONSE_MIN + i;
+            bool selected = value == evaluation.ResponseSelection;
+
+            questionBoxes_[i].color =
+                selected ? questionBoxSelectedColor_ : questionBoxColor_;
+            questionLabels_[i].color =
+                selected ? Color.white : Color.black;
+        }
     }
 
     private void OnEnable() => cameraRig.GetComponent<OVRCameraRig>().UpdatedAnchors += OnUpdatedAnchors;
@@ -217,8 +373,32 @@ public class RedirectionController : MonoBehaviour
     {
     }
 
+    private void ApplyPathYaw(float yaw)
+    {
+        c_pathYaw = reducePeriodic(yaw);
+
+        Quaternion rot = Quaternion.Euler(new Vector3(0, c_pathYaw * Mathf.Rad2Deg, 0));
+        path.transform.localPosition = rot * (c_pathHomePos - c_pathPivot);
+        path.transform.localRotation = rot * c_pathHomeRot;
+    }
+
+    public void RotateWorld(float deltaYaw)
+    {
+        ApplyPathYaw(c_pathYaw + deltaYaw);
+
+        Quaternion rot = Quaternion.Euler(new Vector3(0, deltaYaw * Mathf.Rad2Deg, 0));
+
+        if (quad != null)
+            quad.transform.localRotation = rot * quad.transform.localRotation;
+        if (quad_user != null)
+            quad_user.transform.localRotation = rot * quad_user.transform.localRotation;
+    }
+
     private void UpdateInternal()
     {
+        if (questionUI_ != null)
+            questionUI_.SetActive(evaluation.State == ExperimentState.ES_QUESTION);
+
         switch (evaluation.State)
         {
             case ExperimentState.ES_UNDEFINED:
@@ -291,11 +471,10 @@ public class RedirectionController : MonoBehaviour
                         {
                             e_lastTrial = evaluation.ActiveTrialNumber;
 
-                            evaluation.recenterPose();
-
                             // Orientation (randomized in 360 degrees)
                             float r1 = UnityEngine.Random.value; // in [0,1]
-                            evaluation.resetYaw = evaluation.resetYaw + r1 * (float)Mathf.PI * 2;
+                            evaluation.recenterPose(r1 * (float)Mathf.PI * 2);
+                            RotateWorld(r1 * (float)Mathf.PI * 2);
 
                             evaluation.start_p = evaluation.getPos();
                             evaluation.start_yaw = evaluation.getYaw();
@@ -339,9 +518,9 @@ public class RedirectionController : MonoBehaviour
                             //evaluation.recenterPose();
 
                             // Orientation (randomized in 360 degrees)
-                            //float r1 = UnityEngine.Random.value * (float)Mathf.PI * 2; // in [0,2PI]
-                            //evaluation.resetYaw = r1;
-                            //path.transform.eulerAngles = new Vector3(0, evaluation.resetYaw * Mathf.Rad2Deg, 0);
+                            //float r1 = UnityEngine.Random.value; // in [0,1]
+                            //evaluation.recenterPose(r1 * (float)Mathf.PI * 2);
+                            //RotateWorld(r1 * (float)Mathf.PI * 2);
 
                             //evaluation.start_p = evaluation.getPos();
                             //evaluation.start_yaw = evaluation.getYaw();
@@ -385,9 +564,10 @@ public class RedirectionController : MonoBehaviour
                             e_lastTrial = evaluation.ActiveTrialNumber;
 
                             // Orientation (randomized in 360 degrees)
-                            //float r1 = UnityEngine.Random.value * (float)Mathf.PI * 2; // in [0,2PI]
-                            //evaluation.resetYaw = r1;
-                            //path.transform.eulerAngles = new Vector3(0, evaluation.resetYaw * Mathf.Rad2Deg, 0);
+                            float r1 = UnityEngine.Random.value;
+                            e_virtualYaw = r1 * (float)Mathf.PI * 2;
+                            evaluation.recenterPose(e_virtualYaw);
+                            ApplyPathYaw(e_virtualYaw);
                         }
 
                         // Get curvature gain radius and direction
@@ -396,7 +576,9 @@ public class RedirectionController : MonoBehaviour
 
                         evaluation.reset();
 
-                        Quaternion correctionRot = Quaternion.Euler(new Vector3(0, evaluation.resetYaw * Mathf.Rad2Deg, 0));
+                        float canonicalYaw = evaluation.resetYaw - e_virtualYaw;
+
+                        Quaternion correctionRot = Quaternion.Euler(new Vector3(0, canonicalYaw * Mathf.Rad2Deg, 0));
                         Vector3 start = correctionRot * new Vector3(evaluation.start_p.x, 0, evaluation.start_p.y);
                         Vector3 pos = correctionRot * new Vector3(evaluation.getPos().x, 0, evaluation.getPos().y);
 
@@ -438,7 +620,7 @@ public class RedirectionController : MonoBehaviour
                         // Make sure we do not change anything if p.y<0
                         if (p.y > 0)
                         {
-                            Quaternion correctionRotInv = Quaternion.Euler(new Vector3(0, -evaluation.resetYaw * Mathf.Rad2Deg, 0));
+                            Quaternion correctionRotInv = Quaternion.Euler(new Vector3(0, -canonicalYaw * Mathf.Rad2Deg, 0));
                             Vector3 pos_new = new Vector3(evaluation.start_p.x, 0, evaluation.start_p.y) + (correctionRotInv * new Vector3(pt.x, 0, pt.y));
 
                             // Update position
@@ -547,6 +729,8 @@ public class RedirectionController : MonoBehaviour
                         quad.GetComponent<Renderer>().material.mainTexture = pQuestionT_;
                     else // Curvature
                         quad.GetComponent<Renderer>().material.mainTexture = pQuestionC_;
+
+                    RefreshQuestionScale();
                 }
                 break;
 
@@ -564,7 +748,7 @@ public class RedirectionController : MonoBehaviour
                     // Relative coordinates for reset
                     Vector2 startP_rel = evaluation.start_p + evaluation.resetPos;
                     Vector2 pos_rel = evaluation.getPos() + evaluation.resetPos;
-                    float yaw_rel = evaluation.getYaw() + evaluation.resetYaw;
+                    float yaw_rel = evaluation.getYaw() + evaluation.resetYaw - e_virtualYaw;
 
                     // Compute coordinate system
                     float distance = startP_rel.magnitude;
