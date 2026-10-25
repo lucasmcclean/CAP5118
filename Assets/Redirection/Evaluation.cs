@@ -19,7 +19,8 @@ public enum ExperimentState
     ES_ACTIVE,
     ES_QUESTION,
     ES_INSTRUCTION,
-    ES_THANKYOU
+    ES_THANKYOU,
+    ES_PID
 }
 
 public enum Reaction
@@ -82,6 +83,12 @@ public class Evaluation : MonoBehaviour
 
     public int ResponseSelection;
 
+
+    // ---- Participant ID (numpad) ----
+    public const int PID_MAX_LENGTH = 8;
+    public string ParticipantID = "";
+    public int PidSelectedKey = 4; // 0-11, row-major: 1 2 3 / 4 5 6 / 7 8 9 / Del 0 OK
+    
     public int TotalTrials;
 
     private Trial[] allTrials;
@@ -266,6 +273,62 @@ public class Evaluation : MonoBehaviour
 
         StateChange();
     }
+     // ---- Participant ID numpad ----
+
+    public void MovePidSelection(int dx, int dy)
+    {
+        if (State != ExperimentState.ES_PID)
+            return;
+
+        int col = Mathf.Clamp(PidSelectedKey % 3 + dx, 0, 2);
+        int row = Mathf.Clamp(PidSelectedKey / 3 + dy, 0, 3);
+        PidSelectedKey = row * 3 + col;
+    }
+
+    public void PressPidKey()
+    {
+        if (State != ExperimentState.ES_PID)
+            return;
+
+        if (PidSelectedKey < 9)
+            AddPidDigit(PidSelectedKey + 1);
+        else if (PidSelectedKey == 9)
+            BackspacePid();
+        else if (PidSelectedKey == 10)
+            AddPidDigit(0);
+        else
+            SubmitPid();
+    }
+
+    private void AddPidDigit(int digit)
+    {
+        if (ParticipantID.Length < PID_MAX_LENGTH)
+            ParticipantID += digit.ToString();
+    }
+
+    private void BackspacePid()
+    {
+        if (ParticipantID.Length > 0)
+            ParticipantID = ParticipantID.Substring(0, ParticipantID.Length - 1);
+    }
+
+    private void SubmitPid()
+    {
+        if (ParticipantID.Length == 0)
+            return; // require at least one digit
+        StateChange();
+    }
+
+    // PID is digits only, so it is always safe to use in a filename
+    private string GetFilePath(string suffix)
+    {
+        string name = string.IsNullOrEmpty(ParticipantID)
+            ? suffix
+            : ParticipantID + "_" + suffix;
+        return Path.Combine(Application.persistentDataPath, name + ".txt");
+    }
+
+
 
     public void recenterPose()
     {
@@ -317,6 +380,7 @@ public class Evaluation : MonoBehaviour
         using (StreamWriter writer =
                 new StreamWriter(path, false))
         {
+            writer.WriteLine(ParticipantID);
             for (int i = 0; i <= Mathf.Min(TotalTrials - 1, ActiveTrialNumber); i++)
             {
                 Trial trial = allTrials[i];
@@ -383,14 +447,19 @@ public class Evaluation : MonoBehaviour
 
                 break;
 
+
             case ExperimentState.ES_READYQUESTION:
+                State = ExperimentState.ES_PID;
+                ParticipantID = "";
+                PidSelectedKey = 4;
+                break;
 
+            case ExperimentState.ES_PID:
                 State = ExperimentState.ES_SLIDES;
+                File.AppendAllText(GetFilePath("data"), "PID: " + ParticipantID + Environment.NewLine);
                 writeData("ES_SLIDES");
-                StartTime = Time.realtimeSinceStartup * 1000f; //Note: In milliseconds
-
+                StartTime = Time.realtimeSinceStartup * 1000f;
                 recenterPose();
-
                 break;
 
             case ExperimentState.ES_SLIDES:

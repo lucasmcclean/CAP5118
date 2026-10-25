@@ -60,6 +60,12 @@ public class RedirectionController : MonoBehaviour
     readonly Color32 questionBoxColor_ = new Color32(229, 231, 235, 255);
     readonly Color32 questionBoxSelectedColor_ = new Color32(47, 111, 237, 255);
 
+    // PID numpad UI
+    GameObject pidUI_;
+    Image[] pidKeys_;
+    Text[] pidKeyLabels_;
+    Text pidDisplay_;
+
     //NOTE: Not very efficient, but numerically stable
     float reducePeriodic(float p)
     {
@@ -183,6 +189,7 @@ public class RedirectionController : MonoBehaviour
         ApplyPathYaw(c_pathYaw);
 
         BuildQuestionScale();
+        BuildPidPad();
     }
 
     private void BuildQuestionScale()
@@ -322,34 +329,184 @@ public class RedirectionController : MonoBehaviour
         }
     }
 
+    // ---- PID numpad ----
+
+    private void BuildPidPad()
+    {
+        pidUI_ = new GameObject("PidPad");
+        pidUI_.transform.SetParent(quad.transform, false);
+
+        Canvas canvas = pidUI_.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 10;
+
+        RectTransform canvasRect = pidUI_.GetComponent<RectTransform>();
+        canvasRect.sizeDelta = new Vector2(800f, 600f);
+        canvasRect.localPosition = new Vector3(0f, 0f, -0.01f);
+        canvasRect.localRotation = Quaternion.identity;
+        canvasRect.localScale = Vector3.one * (1f / 800f);
+
+        OVRCameraRig rig = cameraRig.GetComponent<OVRCameraRig>();
+        if (rig != null)
+        {
+            Camera eyeCamera = rig.centerEyeAnchor.GetComponent<Camera>();
+            if (eyeCamera != null)
+                canvas.worldCamera = eyeCamera;
+        }
+
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (font == null)
+            font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+        GameObject bgGO = new GameObject("Background", typeof(RectTransform), typeof(Image));
+        bgGO.transform.SetParent(pidUI_.transform, false);
+        RectTransform bgRect = bgGO.GetComponent<RectTransform>();
+        bgRect.anchorMin = Vector2.zero;
+        bgRect.anchorMax = Vector2.one;
+        bgRect.offsetMin = Vector2.zero;
+        bgRect.offsetMax = Vector2.zero;
+        Image bgImage = bgGO.GetComponent<Image>();
+        bgImage.raycastTarget = false;
+        bgImage.color = new Color32(245, 246, 248, 255);
+
+        CreatePidText("Title", "Enter Participant ID", new Vector2(0f, 240f), 40, FontStyle.Bold,
+            new Color32(30, 30, 30, 255), font, new Vector2(760f, 60f));
+        pidDisplay_ = CreatePidText("Display", "_", new Vector2(0f, 160f), 56, FontStyle.Bold,
+            new Color32(47, 111, 237, 255), font, new Vector2(760f, 70f));
+        CreatePidText("Hint", "Flick stick to move, press A to select", new Vector2(0f, -275f), 24,
+            FontStyle.Normal, new Color32(70, 70, 70, 255), font, new Vector2(760f, 40f));
+
+        string[] labels = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "Del", "0", "OK" };
+        pidKeys_ = new Image[12];
+        pidKeyLabels_ = new Text[12];
+
+        const float keySize = 80f;
+        const float keyGap = 10f;
+        const float topY = 70f;
+
+        for (int i = 0; i < 12; i++)
+        {
+            int col = i % 3;
+            int row = i / 3;
+
+            GameObject keyGO = new GameObject("Key " + labels[i], typeof(RectTransform), typeof(Image));
+            keyGO.transform.SetParent(pidUI_.transform, false);
+
+            RectTransform keyRect = keyGO.GetComponent<RectTransform>();
+            keyRect.anchorMin = new Vector2(0.5f, 0.5f);
+            keyRect.anchorMax = new Vector2(0.5f, 0.5f);
+            keyRect.pivot = new Vector2(0.5f, 0.5f);
+            keyRect.anchoredPosition = new Vector2((col - 1) * (keySize + keyGap), topY - row * (keySize + keyGap));
+            keyRect.sizeDelta = new Vector2(keySize, keySize);
+
+            Image keyImage = keyGO.GetComponent<Image>();
+            keyImage.raycastTarget = false;
+            keyImage.color = questionBoxColor_;
+            pidKeys_[i] = keyImage;
+
+            Outline outline = keyGO.AddComponent<Outline>();
+            outline.effectColor = new Color32(40, 40, 40, 255);
+            outline.effectDistance = new Vector2(2f, -2f);
+
+            GameObject labelGO = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            labelGO.transform.SetParent(keyGO.transform, false);
+            RectTransform labelRect = labelGO.GetComponent<RectTransform>();
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            Text label = labelGO.GetComponent<Text>();
+            label.font = font;
+            label.fontSize = labels[i].Length > 1 ? 30 : 46;
+            label.fontStyle = FontStyle.Bold;
+            label.alignment = TextAnchor.MiddleCenter;
+            label.raycastTarget = false;
+            label.color = Color.black;
+            label.text = labels[i];
+            pidKeyLabels_[i] = label;
+        }
+
+        pidUI_.SetActive(false);
+    }
+
+    private Text CreatePidText(string name, string text, Vector2 position, int fontSize,
+        FontStyle style, Color color, Font font, Vector2 size)
+    {
+        GameObject textGO = new GameObject(name, typeof(RectTransform), typeof(Text));
+        textGO.transform.SetParent(pidUI_.transform, false);
+
+        RectTransform rect = textGO.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+
+        Text label = textGO.GetComponent<Text>();
+        label.font = font;
+        label.fontSize = fontSize;
+        label.fontStyle = style;
+        label.alignment = TextAnchor.MiddleCenter;
+        label.horizontalOverflow = HorizontalWrapMode.Overflow;
+        label.verticalOverflow = VerticalWrapMode.Overflow;
+        label.raycastTarget = false;
+        label.color = color;
+        label.text = text;
+        return label;
+    }
+
+    private void RefreshPidPad()
+    {
+        if (pidKeys_ == null)
+            return;
+
+        pidDisplay_.text = evaluation.ParticipantID.Length == 0 ? "_" : evaluation.ParticipantID;
+
+        for (int i = 0; i < pidKeys_.Length; i++)
+        {
+            bool selected = i == evaluation.PidSelectedKey;
+            pidKeys_[i].color = selected ? questionBoxSelectedColor_ : questionBoxColor_;
+            pidKeyLabels_[i].color = selected ? Color.white : Color.black;
+        }
+    }
+
+
+
     private void OnEnable() => cameraRig.GetComponent<OVRCameraRig>().UpdatedAnchors += OnUpdatedAnchors;
     private void OnDisable() => cameraRig.GetComponent<OVRCameraRig>().UpdatedAnchors -= OnUpdatedAnchors;
 
     private void OnUpdatedAnchors(OVRCameraRig rig)
     {
-        Transform centerEye = rig.centerEyeAnchor;
-        Transform leftEye = rig.leftEyeAnchor;
-        Transform rightEye = rig.rightEyeAnchor;
-        Vector3 leftOffset = leftEye.localPosition - centerEye.localPosition;
-        Vector3 rightOffset = rightEye.localPosition - centerEye.localPosition;
+        // Converted Calculations to use the Camera Rig instead of CenterEye
+        // Allows for controllers to follow camera in the scene rather than be left behind when only moving CenterEye
 
-        evaluation.outsideYaw = centerEye.transform.eulerAngles.y * Mathf.Deg2Rad;
+        // Get centerEye from VR Camera Rig
+        Transform centerEye = rig.centerEyeAnchor;
+
+        // Calulate updated positions for evaluation
+        evaluation.outsideYaw = centerEye.eulerAngles.y * Mathf.Deg2Rad;
         evaluation.outsidePos = new Vector2(centerEye.localPosition.x, centerEye.localPosition.z);
         evaluation.insideUpdate = true;
 
         UpdateInternal();
 
-        Quaternion correctionRot = Quaternion.Euler(new Vector3(0, (evaluation.offsetYaw + evaluation.resetYaw) * Mathf.Rad2Deg, 0));
-        centerEye.localRotation = correctionRot * centerEye.localRotation;
+        // Calculate corrected rotations
+        Quaternion correctionRot = Quaternion.Euler(0, (evaluation.offsetYaw + evaluation.resetYaw) * Mathf.Rad2Deg, 0);
+        Quaternion correctionRotPos = Quaternion.Euler(0, evaluation.resetYaw * Mathf.Rad2Deg, 0);
+        
+        // Calculate new position
+        Vector3 centerPosOld = rig.transform.localPosition;
+        Vector3 centerPosNew = correctionRotPos * (centerPosOld + new Vector3(evaluation.offsetPos.x, 0, evaluation.offsetPos.y) + new Vector3(evaluation.resetPos.x, 0, evaluation.resetPos.y));
 
-        correctionRot = Quaternion.Euler(new Vector3(0, evaluation.resetYaw * Mathf.Rad2Deg, 0));
-        Vector3 centerPosOld = centerEye.localPosition;
-        Vector3 centerPosNew = centerPosOld + new Vector3(evaluation.offsetPos.x, 0, evaluation.offsetPos.y) + new Vector3(evaluation.resetPos.x, 0, evaluation.resetPos.y);
-        centerEye.localPosition = correctionRot * centerPosNew;
+        // Set the Camera Rig's position and rotation to new values
+        rig.transform.localRotation = correctionRot;
+        rig.transform.localPosition = centerPosNew - correctionRot * centerPosOld + new Vector3(0, 1.4f, 0); // Added Vector at end is for height placement
+
 
         if (evaluation.State == ExperimentState.ES_INSTRUCTION)
         {
-            centerEye.localPosition = new Vector3(0, 1000.0f, 0);
+            rig.transform.localPosition = new Vector3(0, 1000.0f, 0);
         }
 
         //if (leftEye != null)
@@ -368,7 +525,7 @@ public class RedirectionController : MonoBehaviour
 
         //        Debug.Log("yaw(" + evaluation.getYaw() / DTOR + ") -- yaw(" + evaluation.start_yaw / DTOR + ") -- offset(" + evaluation.offsetYaw / DTOR + ") -- reset(" + evaluation.resetYaw / DTOR + ")");
     }
-
+    
     private void Update()
     {
     }
@@ -399,6 +556,10 @@ public class RedirectionController : MonoBehaviour
         if (questionUI_ != null)
             questionUI_.SetActive(evaluation.State == ExperimentState.ES_QUESTION);
 
+         if (pidUI_ != null)
+            pidUI_.SetActive(evaluation.State == ExperimentState.ES_PID);
+
+
         switch (evaluation.State)
         {
             case ExperimentState.ES_UNDEFINED:
@@ -416,6 +577,12 @@ public class RedirectionController : MonoBehaviour
                     path.GetComponent<Renderer>().enabled = false;
                 else
                     path.GetComponent<Renderer>().enabled = true;
+                break;
+            
+            case ExperimentState.ES_PID:
+                quad_user.GetComponent<Renderer>().enabled = false;
+                quad.GetComponent<Renderer>().enabled = false;
+                RefreshPidPad();
                 break;
 
             case ExperimentState.ES_SLIDES:
