@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -20,6 +22,7 @@ public enum ExperimentState
     ES_QUESTION,
     ES_INSTRUCTION,
     ES_THANKYOU,
+    // Append to preserve the values serialized in the team's scenes.
     ES_PID
 }
 
@@ -39,10 +42,26 @@ public class Trial
     public int Step2;
     public float Value;
     public float Value2;
+    public bool ResponseRecorded;
 }
 
 public class Evaluation : MonoBehaviour
 {
+    [Header("Pilot session - use an anonymous code, never a participant name")]
+    [UnityEngine.Serialization.FormerlySerializedAs("ParticipantID")]
+    public string ParticipantId = "";
+    // Preserve the field name used by the team's other source files.
+    public string ParticipantID { get => ParticipantId; set => ParticipantId = value; }
+    public string ScaleInterpretation = "Pending advisor confirmation";
+    public bool ScaleInterpretationConfirmed = false;
+    public const string WorkingRotationScale = "Team working rotation pilot: -3 much slower, -2 slower, -1 slightly slower, 0 same speed, +1 slightly faster, +2 faster, +3 much faster than physical turning. Adapted from Christian/Lucas's October 23 seven-choice proposal; not recorded as advisor-confirmed.";
+    public int PracticeTrialCount { get; private set; }
+    public string SessionDirectory { get; private set; }
+    public bool IsSoftwareSimulation { get; private set; }
+    public string SessionError { get; private set; }
+    private string simulationRoot;
+    private PilotSessionRecorder session;
+
     public float DISTANCE = 3.0f;         // 3m walking distance in VE
     public float ANGLE = Mathf.PI * 0.5f; // 90 deg angle in VE
     public float VALUES_MIN = 0.6f;
@@ -83,12 +102,9 @@ public class Evaluation : MonoBehaviour
 
     public int ResponseSelection;
 
-
-    // ---- Participant ID (numpad) ----
     public const int PID_MAX_LENGTH = 8;
-    public string ParticipantID = "";
-    public int PidSelectedKey = 4; // 0-11, row-major: 1 2 3 / 4 5 6 / 7 8 9 / Del 0 OK
-    
+    public int PidSelectedKey = 4;
+
     public int TotalTrials;
 
     private Trial[] allTrials;
@@ -99,7 +115,14 @@ public class Evaluation : MonoBehaviour
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
+        if (STEPS < 1 || STEPS2 < 1 || TRIALS < 1 || TEST_TRIALS < 0)
+            throw new InvalidOperationException("Trial counts must be positive; practice count cannot be negative.");
+
         // Initialize values
+        PracticeTrialCount = TEST_TRIALS;
+        if (EXP_TYPE == ExperimentType.ET_ROTATION &&
+            (string.IsNullOrWhiteSpace(ScaleInterpretation) || ScaleInterpretation.StartsWith("Pending", StringComparison.OrdinalIgnoreCase)))
+            ScaleInterpretation = WorkingRotationScale;
         State = ExperimentState.ES_READYQUESTION;
         resetPos = new Vector2(0, 0);
         resetYaw = 0;
@@ -122,6 +145,8 @@ public class Evaluation : MonoBehaviour
         ActiveTrialNumber = -1;
         ActiveTrial = new Trial();
         SetNextTrial();
+        if (EXP_TYPE == ExperimentType.ET_ROTATION && GetComponent<PilotParticipantEntry>() == null)
+            gameObject.AddComponent<PilotParticipantEntry>();
     }
 
     // Update is called once per frame
@@ -133,6 +158,8 @@ public class Evaluation : MonoBehaviour
     {
         if (TEST_TRIALS == 0)
         {
+            if (ActiveTrialNumber >= TotalTrials - 1)
+                throw new InvalidOperationException("All measured trials have already been allocated.");
             if (ActiveTrialNumber < 0)
                 ActiveTrialNumber = 0;
             else
@@ -186,7 +213,7 @@ public class Evaluation : MonoBehaviour
 
         // step == 0          =>  VALUES_MIN
         // step == STEPS - 1  =>  VALUES_MAX
-        return VALUES_MIN + step / (float)(STEPS - 1) * (VALUES_MAX - VALUES_MIN);
+        return STEPS == 1 ? VALUES_MIN : VALUES_MIN + step / (float)(STEPS - 1) * (VALUES_MAX - VALUES_MIN);
     }
 
     private float GetGainToStep2(int step2)
@@ -215,7 +242,10 @@ public class Evaluation : MonoBehaviour
         }
 
         // Choose randomly a number in [0, slots-1]
-        int n = random.Next(0, slots-1);
+        if (slots == 0)
+            throw new InvalidOperationException("No trial conditions remain.");
+        // Random.Next's upper bound is exclusive. Every available slot must be eligible.
+        int n = random.Next(0, slots);
 
         int cnt = 0;
         for (int i = 0; i < completedTrials.Length; i++)
@@ -257,12 +287,39 @@ public class Evaluation : MonoBehaviour
             RESPONSE_MAX);
     }
 
+    // Christian/Logan's 3-by-4 headset keypad, using the existing recorder ID.
+    public void MovePidSelection(int dx, int dy)
+    {
+        if (State != ExperimentState.ES_PID) return;
+        int column = Mathf.Clamp(PidSelectedKey % 3 + dx, 0, 2);
+        int row = Mathf.Clamp(PidSelectedKey / 3 + dy, 0, 3);
+        PidSelectedKey = row * 3 + column;
+    }
+
+    public void PressPidKey()
+    {
+        if (State != ExperimentState.ES_PID || session != null) return;
+        if (PidSelectedKey == 11) { StateChange(); return; }
+        string current = ParticipantId ?? "";
+        if (PidSelectedKey == 9)
+        {
+            if (current.Length > 0) ParticipantId = current.Substring(0, current.Length - 1);
+        }
+        else if (current.Length < PID_MAX_LENGTH)
+        {
+            string digit = PidSelectedKey == 10 ? "0" : (PidSelectedKey + 1).ToString(CultureInfo.InvariantCulture);
+            ParticipantId = current + digit;
+        }
+        SessionError = "";
+    }
+
     public void SubmitResponse()
     {
         if (State != ExperimentState.ES_QUESTION)
             return;
 
         ActiveTrial.Response = ResponseSelection;
+        ActiveTrial.ResponseRecorded = true;
 
         if (ResponseSelection < 0)
             ActiveTrial.Reaction = Reaction.RE_UP;
@@ -273,62 +330,6 @@ public class Evaluation : MonoBehaviour
 
         StateChange();
     }
-     // ---- Participant ID numpad ----
-
-    public void MovePidSelection(int dx, int dy)
-    {
-        if (State != ExperimentState.ES_PID)
-            return;
-
-        int col = Mathf.Clamp(PidSelectedKey % 3 + dx, 0, 2);
-        int row = Mathf.Clamp(PidSelectedKey / 3 + dy, 0, 3);
-        PidSelectedKey = row * 3 + col;
-    }
-
-    public void PressPidKey()
-    {
-        if (State != ExperimentState.ES_PID)
-            return;
-
-        if (PidSelectedKey < 9)
-            AddPidDigit(PidSelectedKey + 1);
-        else if (PidSelectedKey == 9)
-            BackspacePid();
-        else if (PidSelectedKey == 10)
-            AddPidDigit(0);
-        else
-            SubmitPid();
-    }
-
-    private void AddPidDigit(int digit)
-    {
-        if (ParticipantID.Length < PID_MAX_LENGTH)
-            ParticipantID += digit.ToString();
-    }
-
-    private void BackspacePid()
-    {
-        if (ParticipantID.Length > 0)
-            ParticipantID = ParticipantID.Substring(0, ParticipantID.Length - 1);
-    }
-
-    private void SubmitPid()
-    {
-        if (ParticipantID.Length == 0)
-            return; // require at least one digit
-        StateChange();
-    }
-
-    // PID is digits only, so it is always safe to use in a filename
-    private string GetFilePath(string suffix)
-    {
-        string name = string.IsNullOrEmpty(ParticipantID)
-            ? suffix
-            : ParticipantID + "_" + suffix;
-        return Path.Combine(Application.persistentDataPath, name + ".txt");
-    }
-
-
 
     public void recenterPose()
     {
@@ -370,11 +371,58 @@ public class Evaluation : MonoBehaviour
 
     public void writeToTxt()
     {
+        if (EXP_TYPE != ExperimentType.ET_ROTATION) { WriteLegacyResults(); return; }
+        if (ActiveTrialNumber < 0 || session == null)
+            return;
+        var rows = new List<string>();
+        for (int i = 0; i <= Mathf.Min(TotalTrials - 1, ActiveTrialNumber); i++)
+        {
+            Trial trial = allTrials[i];
+            if (!trial.ResponseRecorded) continue;
+            rows.Add(trial.Value.ToString("R", CultureInfo.InvariantCulture) + "\t" +
+                trial.Value2.ToString("R", CultureInfo.InvariantCulture) + "\t" +
+                trial.Reaction + "\t" + trial.Response.ToString(CultureInfo.InvariantCulture));
+        }
+        session.WriteResults(rows, State == ExperimentState.ES_THANKYOU);
+    }
+
+    public void writeLog(
+        float realX,
+        float realY,
+        float virtualX,
+        float virtualY,
+        float realYaw,
+        float virtualYaw)
+    {
+        if (EXP_TYPE != ExperimentType.ET_ROTATION)
+        {
+            WriteLegacyMotion(realX, realY, virtualX, virtualY, realYaw, virtualYaw);
+            return;
+        }
+        if (ActiveTrialNumber < 0 || session == null)
+            return;
+        session.WriteMotion(ActiveTrialNumber, Time.realtimeSinceStartup,
+            realX, realY, virtualX, virtualY, realYaw, virtualYaw);
+    }
+
+    public void writeData(string text)
+    {
+        if (EXP_TYPE != ExperimentType.ET_ROTATION) { WriteLegacyEvent(text); return; }
+        if (session == null)
+            return;
+        session.WriteEvent(ActiveTrialNumber, text);
+    }
+
+    // Preserve the existing translation/curvature export format and paths.
+    private string LegacyDataRoot => IsSoftwareSimulation ? simulationRoot : Application.persistentDataPath;
+
+    private void WriteLegacyResults()
+    {
         if (ActiveTrialNumber < 0)
             return;
 
         string path = Path.Combine(
-            Application.persistentDataPath,
+            LegacyDataRoot,
             "results.txt");
 
         using (StreamWriter writer =
@@ -392,7 +440,7 @@ public class Evaluation : MonoBehaviour
 //        Debug.Log("path (" + path + ")");
     }
 
-    public void writeLog(
+    private void WriteLegacyMotion(
         float realX,
         float realY,
         float virtualX,
@@ -405,7 +453,7 @@ public class Evaluation : MonoBehaviour
 
         string path =
             Path.Combine(
-                Application.persistentDataPath,
+                LegacyDataRoot,
                 "data.txt");
 
         string line =
@@ -419,19 +467,108 @@ public class Evaluation : MonoBehaviour
             line + Environment.NewLine);
     }
 
-    public void writeData(string text)
+    private void WriteLegacyEvent(string text)
     {
         if (ActiveTrialNumber < 0)
             return;
 
         string path =
             Path.Combine(
-                Application.persistentDataPath,
+                LegacyDataRoot,
                 "data.txt");
 
         File.AppendAllText(
             path,
             "\n\n" + text + "\n\n");
+    }
+
+    private string GetFilePath(string suffix)
+    {
+        string name = string.IsNullOrEmpty(ParticipantID)
+            ? suffix
+            : ParticipantID + "_" + suffix;
+        return Path.Combine(LegacyDataRoot, name + ".txt");
+    }
+
+    public bool TrySetParticipantId(string value)
+    {
+        if (session != null) return false;
+        if (value == null || !Regex.IsMatch(value, "^[A-Za-z0-9_-]{1,32}$"))
+        {
+            SessionError = "Enter an anonymous ID using 1-32 letters, digits, underscores or hyphens.";
+            return false;
+        }
+        ParticipantId = value;
+        SessionError = "";
+        return true;
+    }
+
+    // Called only by the Editor QA harness. Synthetic runs never enter the pilot folder.
+    public void ConfigureSoftwareSimulation(string outputRoot)
+    {
+        if (session != null) throw new InvalidOperationException("A session has already started.");
+        IsSoftwareSimulation = true;
+        simulationRoot = Path.GetFullPath(outputRoot);
+    }
+
+    private bool BeginSession()
+    {
+        if (session != null) return true;
+        if (!TrySetParticipantId(ParticipantId)) return false;
+        if (!IsSoftwareSimulation && (string.IsNullOrWhiteSpace(ScaleInterpretation) ||
+            ScaleInterpretation.StartsWith("Pending", StringComparison.OrdinalIgnoreCase)))
+        {
+            SessionError = "Enter the response instructions used for this pilot before starting.";
+            return false;
+        }
+        try
+        {
+            string root = IsSoftwareSimulation ? simulationRoot :
+                Path.Combine(Application.persistentDataPath, "CAP5118_PilotSessions");
+            var metadata = new PilotMetadata {
+                participantId = ParticipantId, experiment = EXP_TYPE.ToString(),
+                softwareSimulation = IsSoftwareSimulation,
+                scaleInterpretation = ScaleInterpretation,
+                scaleInterpretationConfirmed = ScaleInterpretationConfirmed,
+                protocolStatus = ScaleInterpretationConfirmed ? "confirmed_protocol" : "working_pilot_protocol_for_review",
+                instructionSource = "Rotation wording adapted from team Discord, October 23, Christian 17:57 and Lucas 17:58; current inherited gain grid retained",
+                expectedMeasuredTrials = TotalTrials, practiceTrials = TEST_TRIALS + (ActiveTrialNumber < 0 ? 1 : 0),
+                steps = STEPS, steps2 = STEPS2, repetitions = TRIALS,
+                minimumGain = VALUES_MIN, maximumGain = VALUES_MAX,
+                minimumGain2 = VALUES_MIN2, maximumGain2 = VALUES_MAX2,
+                virtualAngleRadians = ANGLE, virtualDistanceMetres = DISTANCE,
+                scene = gameObject.scene.path, unityVersion = Application.unityVersion,
+                createdUtc = DateTime.UtcNow.ToString("o"),
+                responseScale = "-3,-2,-1,0,1,2,3"
+            };
+            session = new PilotSessionRecorder(root, ParticipantId, EXP_TYPE.ToString(),
+                IsSoftwareSimulation, TotalTrials, JsonUtility.ToJson(metadata, true));
+            SessionDirectory = session.DirectoryPath;
+            SessionError = "";
+            Debug.Log("Pilot session: " + SessionDirectory + (IsSoftwareSimulation ? " [SYNTHETIC SOFTWARE TEST]" : ""));
+            return true;
+        }
+        catch (Exception error)
+        {
+            SessionError = "Could not create session files: " + error.Message;
+            Debug.LogError(SessionError);
+            return false;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        session?.Dispose();
+        session = null;
+    }
+
+    [Serializable] private class PilotMetadata
+    {
+        public string participantId, experiment, scene, unityVersion, createdUtc, responseScale, scaleInterpretation,
+            protocolStatus, instructionSource;
+        public bool softwareSimulation, scaleInterpretationConfirmed;
+        public int expectedMeasuredTrials, practiceTrials, steps, steps2, repetitions;
+        public float minimumGain, maximumGain, minimumGain2, maximumGain2, virtualAngleRadians, virtualDistanceMetres;
     }
 
 
@@ -447,19 +584,29 @@ public class Evaluation : MonoBehaviour
 
                 break;
 
-
             case ExperimentState.ES_READYQUESTION:
-                State = ExperimentState.ES_PID;
-                ParticipantID = "";
+                if (EXP_TYPE != ExperimentType.ET_ROTATION) ParticipantId = "";
                 PidSelectedKey = 4;
+                SessionError = "";
+                State = ExperimentState.ES_PID;
                 break;
 
             case ExperimentState.ES_PID:
+                if (EXP_TYPE == ExperimentType.ET_ROTATION)
+                {
+                    if (!BeginSession()) return;
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(ParticipantId)) return;
+                    File.AppendAllText(GetFilePath("data"), "PID: " + ParticipantId + Environment.NewLine);
+                }
                 State = ExperimentState.ES_SLIDES;
-                File.AppendAllText(GetFilePath("data"), "PID: " + ParticipantID + Environment.NewLine);
                 writeData("ES_SLIDES");
-                StartTime = Time.realtimeSinceStartup * 1000f;
+                StartTime = Time.realtimeSinceStartup * 1000f; //Note: In milliseconds
+
                 recenterPose();
+
                 break;
 
             case ExperimentState.ES_SLIDES:
@@ -476,12 +623,13 @@ public class Evaluation : MonoBehaviour
                 State = ExperimentState.ES_QUESTION;
                 ResponseSelection = 0;
                 ActiveTrial.Response = 0;
+                ActiveTrial.ResponseRecorded = false;
                 writeData("ES_QUESTION");
 
                 break;
 
             case ExperimentState.ES_QUESTION:
-
+                if (!ActiveTrial.ResponseRecorded) return;
                 writeToTxt();
 
                 if (ActiveTrialNumber < TotalTrials - 1)
@@ -497,6 +645,7 @@ public class Evaluation : MonoBehaviour
                 {
                     State = ExperimentState.ES_THANKYOU;
                     writeData("ES_THANK_YOU");
+                    writeToTxt();
                 }
 
                 break;

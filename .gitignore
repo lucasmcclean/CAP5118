@@ -3,6 +3,12 @@
 # Get latest from https://github.com/github/gitignore/blob/main/Unity.gitignore
 #
 .utmp/
+# Local software QA, builds and synthetic runs are not human pilot submissions.
+/QA/
+# Session exports and Unity crash recovery are local, not source deliverables.
+/PilotExports/
+/CAP5118_PilotSessions/
+/Assets/_Recovery/
 /[Ll]ibrary/
 /[Tt]emp/
 /[Oo]bj/
