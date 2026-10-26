@@ -57,8 +57,18 @@ public class RedirectionController : MonoBehaviour
     GameObject questionUI_;
     Image[] questionBoxes_;
     Text[] questionLabels_;
+    GameObject pidUI_;
+    Image[] pidKeys_;
+    Text[] pidKeyLabels_;
+    Text pidDisplay_, pidStatus_;
+    GameObject rotationIntroUI_;
+    Text rotationTrialLabel_;
     readonly Color32 questionBoxColor_ = new Color32(229, 231, 235, 255);
     readonly Color32 questionBoxSelectedColor_ = new Color32(47, 111, 237, 255);
+    OVRCameraRig subscribedRig_;
+    bool trackingBaseCached_;
+    Vector3 trackingBasePosition_;
+    Quaternion trackingBaseRotation_;
 
     //NOTE: Not very efficient, but numerically stable
     float reducePeriodic(float p)
@@ -183,6 +193,175 @@ public class RedirectionController : MonoBehaviour
         ApplyPathYaw(c_pathYaw);
 
         BuildQuestionScale();
+        BuildPidPad();
+        if (evaluation.EXP_TYPE == ExperimentType.ET_ROTATION) BuildRotationIntro();
+    }
+
+    private GameObject CreateWorldPanel(string name)
+    {
+        GameObject panel = new GameObject(name);
+        panel.transform.SetParent(quad.transform, false);
+        Canvas canvas = panel.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 10;
+        canvas.worldCamera = cameraRig.GetComponent<OVRCameraRig>().centerEyeAnchor.GetComponent<Camera>();
+        RectTransform rect = panel.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(800, 600);
+        rect.localPosition = new Vector3(0, 0, -.01f);
+        rect.localRotation = Quaternion.identity;
+        rect.localScale = Vector3.one / 800f;
+        AddPanelBackground(panel);
+        return panel;
+    }
+
+    private static void AddPanelBackground(GameObject parent)
+    {
+        GameObject background = new GameObject("Background", typeof(RectTransform), typeof(Image));
+        background.transform.SetParent(parent.transform, false);
+        background.transform.SetAsFirstSibling();
+        RectTransform rect = background.GetComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = rect.offsetMax = Vector2.zero;
+        Image image = background.GetComponent<Image>();
+        image.color = new Color32(245, 246, 248, 255);
+        image.raycastTarget = false;
+    }
+
+    private static Text CreatePanelText(GameObject parent, string name, string text, float y,
+        int size, Font font, bool bold = false, float height = 65)
+    {
+        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(Text));
+        obj.transform.SetParent(parent.transform, false);
+        RectTransform rect = obj.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = rect.pivot = Vector2.one * .5f;
+        rect.anchoredPosition = new Vector2(0, y);
+        rect.sizeDelta = new Vector2(760, height);
+        Text label = obj.GetComponent<Text>();
+        label.font = font;
+        label.fontSize = size;
+        label.fontStyle = bold ? FontStyle.Bold : FontStyle.Normal;
+        label.alignment = TextAnchor.MiddleCenter;
+        label.raycastTarget = false;
+        label.color = Color.black;
+        label.text = text;
+        return label;
+    }
+
+    private void BuildRotationIntro()
+    {
+        rotationIntroUI_ = CreateWorldPanel("RotationInstructions");
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        CreatePanelText(rotationIntroUI_, "Title", "Rotation pilot", 245, 36, font, true);
+        CreatePanelText(rotationIntroUI_, "Instructions",
+            "Stand in place and slowly turn your body.\nDo not walk or use the stick for movement.\nStop turning when the rating screen appears.\nRate virtual turning compared with your body.\nFlick either stick left/right; press A to confirm.\n" +
+            evaluation.PracticeTrialCount + " practice trials, then " + evaluation.TotalTrials + " recorded trials.",
+            55, 26, font, false, 270);
+        CreatePanelText(rotationIntroUI_, "Scale",
+            "-3 = much slower    0 = same speed    +3 = much faster\nIntermediate values mean smaller differences.",
+            -145, 23, font, false, 100);
+        CreatePanelText(rotationIntroUI_, "Continue", "Press A when ready to begin", -255, 28, font, true);
+        rotationIntroUI_.SetActive(false);
+    }
+
+    // Headset keypad adapted from Christian/Logan's e85fe08 team contribution.
+    // Retains this branch's common-parent tracking correction and session recorder.
+    private void BuildPidPad()
+    {
+        pidUI_ = new GameObject("PidPad");
+        pidUI_.transform.SetParent(quad.transform, false);
+        Canvas canvas = pidUI_.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 10;
+        RectTransform rect = pidUI_.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(800, 600);
+        rect.localPosition = new Vector3(0, 0, -.01f);
+        rect.localRotation = Quaternion.identity;
+        rect.localScale = Vector3.one / 800f;
+        OVRCameraRig rig = cameraRig.GetComponent<OVRCameraRig>();
+        if (rig != null) canvas.worldCamera = rig.centerEyeAnchor.GetComponent<Camera>();
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (font == null) font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        GameObject background = new GameObject("Background", typeof(RectTransform), typeof(Image));
+        background.transform.SetParent(pidUI_.transform, false);
+        RectTransform backgroundRect = background.GetComponent<RectTransform>();
+        backgroundRect.anchorMin = Vector2.zero;
+        backgroundRect.anchorMax = Vector2.one;
+        backgroundRect.offsetMin = backgroundRect.offsetMax = Vector2.zero;
+        Image backgroundImage = background.GetComponent<Image>();
+        backgroundImage.color = new Color32(245, 246, 248, 255);
+        backgroundImage.raycastTarget = false;
+        CreatePidText("Title", "Enter Participant ID", 240, 40, font, true);
+        pidDisplay_ = CreatePidText("Display", "_", 160, 56, font, true);
+        pidDisplay_.color = questionBoxSelectedColor_;
+        CreatePidText("Hint", "Flick either stick to move; press A to select", -225, 23, font);
+        pidStatus_ = CreatePidText("Status", "", -270, 18, font);
+        pidStatus_.color = new Color32(155, 30, 30, 255);
+        string[] labels = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "Del", "0", "OK" };
+        pidKeys_ = new Image[labels.Length];
+        pidKeyLabels_ = new Text[labels.Length];
+        for (int i = 0; i < labels.Length; i++)
+        {
+            GameObject key = new GameObject("Key " + labels[i], typeof(RectTransform), typeof(Image));
+            key.transform.SetParent(pidUI_.transform, false);
+            RectTransform keyRect = key.GetComponent<RectTransform>();
+            keyRect.anchorMin = keyRect.anchorMax = keyRect.pivot = Vector2.one * .5f;
+            keyRect.anchoredPosition = new Vector2((i % 3 - 1) * 80, 75 - (i / 3) * 80);
+            keyRect.sizeDelta = Vector2.one * 70;
+            pidKeys_[i] = key.GetComponent<Image>();
+            pidKeys_[i].raycastTarget = false;
+            Outline outline = key.AddComponent<Outline>();
+            outline.effectColor = new Color32(40, 40, 40, 255);
+            outline.effectDistance = new Vector2(2, -2);
+            GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            labelObject.transform.SetParent(key.transform, false);
+            RectTransform labelRect = labelObject.GetComponent<RectTransform>();
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
+            Text label = labelObject.GetComponent<Text>();
+            label.font = font;
+            label.fontSize = labels[i].Length > 1 ? 28 : 42;
+            label.fontStyle = FontStyle.Bold;
+            label.alignment = TextAnchor.MiddleCenter;
+            label.raycastTarget = false;
+            label.text = labels[i];
+            pidKeyLabels_[i] = label;
+        }
+        RefreshPidPad();
+        pidUI_.SetActive(false);
+    }
+
+    private Text CreatePidText(string name, string text, float y, int size, Font font, bool bold = false)
+    {
+        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(Text));
+        obj.transform.SetParent(pidUI_.transform, false);
+        RectTransform rect = obj.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = rect.pivot = Vector2.one * .5f;
+        rect.anchoredPosition = new Vector2(0, y);
+        rect.sizeDelta = new Vector2(760, 65);
+        Text label = obj.GetComponent<Text>();
+        label.font = font;
+        label.fontSize = size;
+        label.fontStyle = bold ? FontStyle.Bold : FontStyle.Normal;
+        label.alignment = TextAnchor.MiddleCenter;
+        label.raycastTarget = false;
+        label.color = Color.black;
+        label.text = text;
+        return label;
+    }
+
+    private void RefreshPidPad()
+    {
+        if (pidKeys_ == null) return;
+        pidDisplay_.text = string.IsNullOrEmpty(evaluation.ParticipantId) ? "_" : evaluation.ParticipantId;
+        pidStatus_.text = evaluation.SessionError ?? "";
+        for (int i = 0; i < pidKeys_.Length; i++)
+        {
+            bool selected = i == evaluation.PidSelectedKey;
+            pidKeys_[i].color = selected ? questionBoxSelectedColor_ : questionBoxColor_;
+            pidKeyLabels_[i].color = selected ? Color.white : Color.black;
+        }
     }
 
     private void BuildQuestionScale()
@@ -212,13 +391,23 @@ public class RedirectionController : MonoBehaviour
         if (font == null)
             font = Resources.GetBuiltinResource<Font>("Arial.ttf");
 
+        bool rotation = evaluation.EXP_TYPE == ExperimentType.ET_ROTATION;
+        if (rotation)
+        {
+            AddPanelBackground(questionUI_);
+            CreatePanelText(questionUI_, "Title", "Stop turning and rate the experience", 245, 32, font, true);
+            rotationTrialLabel_ = CreatePanelText(questionUI_, "Trial", "", 185, 24, font);
+            CreatePanelText(questionUI_, "Question", "Compared with your physical turning,\nhow fast did your virtual turning feel?", 85, 30, font, false, 105);
+        }
+
         int optionCount = Evaluation.RESPONSE_MAX - Evaluation.RESPONSE_MIN + 1;
         questionBoxes_ = new Image[optionCount];
         questionLabels_ = new Text[optionCount];
 
         const float boxSize = 76f;
         const float boxGap = 12f;
-        const float boxY = -145f;
+        float boxY = rotation ? -70f : -145f;
+        string[] rotationLabels = { "Much\nslower", "Slower", "Slightly\nslower", "Same\nspeed", "Slightly\nfaster", "Faster", "Much\nfaster" };
         float totalWidth = optionCount * boxSize + (optionCount - 1) * boxGap;
         float firstX = -totalWidth * 0.5f + boxSize * 0.5f;
 
@@ -234,7 +423,7 @@ public class RedirectionController : MonoBehaviour
             boxRect.anchorMax = new Vector2(0.5f, 0.5f);
             boxRect.pivot = new Vector2(0.5f, 0.5f);
             boxRect.anchoredPosition = new Vector2(firstX + i * (boxSize + boxGap), boxY);
-            boxRect.sizeDelta = new Vector2(boxSize, boxSize);
+            boxRect.sizeDelta = new Vector2(boxSize, rotation ? 145 : boxSize);
 
             Image boxImage = boxGO.GetComponent<Image>();
             boxImage.raycastTarget = false;
@@ -256,12 +445,12 @@ public class RedirectionController : MonoBehaviour
 
             Text label = labelGO.GetComponent<Text>();
             label.font = font;
-            label.fontSize = 46;
+            label.fontSize = rotation ? 20 : 46;
             label.fontStyle = FontStyle.Bold;
             label.alignment = TextAnchor.MiddleCenter;
             label.raycastTarget = false;
             label.color = Color.black;
-            label.text = value.ToString();
+            label.text = rotation ? value.ToString() + "\n" + rotationLabels[i] : value.ToString();
             questionLabels_[i] = label;
         }
 
@@ -310,6 +499,11 @@ public class RedirectionController : MonoBehaviour
         if (questionBoxes_ == null)
             return;
 
+        if (rotationTrialLabel_ != null)
+            rotationTrialLabel_.text = evaluation.ActiveTrialNumber < 0 ?
+                "Practice " + (-evaluation.ActiveTrialNumber - 1) + " of " + evaluation.PracticeTrialCount :
+                "Recorded trial " + (evaluation.ActiveTrialNumber + 1) + " of " + evaluation.TotalTrials;
+
         for (int i = 0; i < questionBoxes_.Length; i++)
         {
             int value = Evaluation.RESPONSE_MIN + i;
@@ -322,51 +516,66 @@ public class RedirectionController : MonoBehaviour
         }
     }
 
-    private void OnEnable() => cameraRig.GetComponent<OVRCameraRig>().UpdatedAnchors += OnUpdatedAnchors;
-    private void OnDisable() => cameraRig.GetComponent<OVRCameraRig>().UpdatedAnchors -= OnUpdatedAnchors;
+    private void OnEnable()
+    {
+        subscribedRig_ = cameraRig != null ? cameraRig.GetComponent<OVRCameraRig>() : null;
+        trackingBaseCached_ = false;
+        if (subscribedRig_ != null) subscribedRig_.UpdatedAnchors += OnUpdatedAnchors;
+    }
+
+    private void OnDisable()
+    {
+        if (subscribedRig_ != null)
+        {
+            subscribedRig_.UpdatedAnchors -= OnUpdatedAnchors;
+            if (trackingBaseCached_ && subscribedRig_.trackingSpace != null)
+            {
+                subscribedRig_.trackingSpace.localPosition = trackingBasePosition_;
+                subscribedRig_.trackingSpace.localRotation = trackingBaseRotation_;
+            }
+        }
+        trackingBaseCached_ = false;
+    }
 
     private void OnUpdatedAnchors(OVRCameraRig rig)
     {
-        Transform centerEye = rig.centerEyeAnchor;
-        Transform leftEye = rig.leftEyeAnchor;
-        Transform rightEye = rig.rightEyeAnchor;
-        Vector3 leftOffset = leftEye.localPosition - centerEye.localPosition;
-        Vector3 rightOffset = rightEye.localPosition - centerEye.localPosition;
+        ProcessTrackedPose(rig);
+    }
 
-        evaluation.outsideYaw = centerEye.transform.eulerAngles.y * Mathf.Deg2Rad;
+    // Also exercised by Editor QA with explicitly synthetic tracked poses.
+    public void ProcessTrackedPose(OVRCameraRig rig)
+    {
+        Transform centerEye = rig.centerEyeAnchor;
+        Transform trackingSpace = rig.trackingSpace;
+        if (!trackingBaseCached_)
+        {
+            trackingBasePosition_ = trackingSpace.localPosition;
+            trackingBaseRotation_ = trackingSpace.localRotation;
+            trackingBaseCached_ = true;
+        }
+        // Read the raw tracking-space pose, not a world yaw already redirected last frame.
+        evaluation.outsideYaw = centerEye.localEulerAngles.y * Mathf.Deg2Rad;
         evaluation.outsidePos = new Vector2(centerEye.localPosition.x, centerEye.localPosition.z);
         evaluation.insideUpdate = true;
-
-        UpdateInternal();
-
-        Quaternion correctionRot = Quaternion.Euler(new Vector3(0, (evaluation.offsetYaw + evaluation.resetYaw) * Mathf.Rad2Deg, 0));
-        centerEye.localRotation = correctionRot * centerEye.localRotation;
-
-        correctionRot = Quaternion.Euler(new Vector3(0, evaluation.resetYaw * Mathf.Rad2Deg, 0));
-        Vector3 centerPosOld = centerEye.localPosition;
-        Vector3 centerPosNew = centerPosOld + new Vector3(evaluation.offsetPos.x, 0, evaluation.offsetPos.y) + new Vector3(evaluation.resetPos.x, 0, evaluation.resetPos.y);
-        centerEye.localPosition = correctionRot * centerPosNew;
-
-        if (evaluation.State == ExperimentState.ES_INSTRUCTION)
+        try
         {
-            centerEye.localPosition = new Vector3(0, 1000.0f, 0);
+            UpdateInternal();
+            Quaternion yawCorrection = Quaternion.Euler(0,
+                (evaluation.offsetYaw + evaluation.resetYaw) * Mathf.Rad2Deg, 0);
+            Quaternion resetCorrection = Quaternion.Euler(0, evaluation.resetYaw * Mathf.Rad2Deg, 0);
+            Vector3 rawPosition = centerEye.localPosition;
+            Vector3 offset = new Vector3(evaluation.offsetPos.x + evaluation.resetPos.x, 0,
+                evaluation.offsetPos.y + evaluation.resetPos.y);
+            Vector3 desiredPosition = resetCorrection * (rawPosition + offset);
+            Vector3 translation = desiredPosition - yawCorrection * rawPosition;
+            if (evaluation.State == ExperimentState.ES_INSTRUCTION) translation.y += 1000f - rawPosition.y;
+
+            // Apply one rigid transform to the common parent of BOTH eyes and BOTH hands.
+            // Raw anchor poses remain untouched, so stereo/controller alignment is preserved.
+            trackingSpace.localRotation = trackingBaseRotation_ * yawCorrection;
+            trackingSpace.localPosition = trackingBasePosition_ + trackingBaseRotation_ * translation;
         }
-
-        //if (leftEye != null)
-        //{
-        //    leftEye.localPosition = centerPosNew + (correctionRot * leftOffset);
-        //    leftEye.localRotation = correctionRot * leftEye.localRotation;
-        //}
-        //if (rightEye != null)
-        //{
-        //    rightEye.localPosition = centerPosNew + (correctionRot * rightOffset);
-        //    rightEye.localRotation = correctionRot * rightEye.localRotation;
-        //}
-
-        evaluation.insideUpdate = false;
-        Debug.Log("pos(" + evaluation.getPos().x + ", " + evaluation.getPos().y + ") -- offsetPos(" + evaluation.offsetPos.x + ", " + evaluation.offsetPos.y + ")");
-
-        //        Debug.Log("yaw(" + evaluation.getYaw() / DTOR + ") -- yaw(" + evaluation.start_yaw / DTOR + ") -- offset(" + evaluation.offsetYaw / DTOR + ") -- reset(" + evaluation.resetYaw / DTOR + ")");
+        finally { evaluation.insideUpdate = false; }
     }
 
     private void Update()
@@ -388,9 +597,11 @@ public class RedirectionController : MonoBehaviour
 
         Quaternion rot = Quaternion.Euler(new Vector3(0, deltaYaw * Mathf.Rad2Deg, 0));
 
-        if (quad != null)
+        // Instruction panels in these scenes are head-locked. Rotating them again
+        // would move the question out of the participant's field of view.
+        if (quad != null && !quad.transform.IsChildOf(evaluation.centerEye.transform))
             quad.transform.localRotation = rot * quad.transform.localRotation;
-        if (quad_user != null)
+        if (quad_user != null && !quad_user.transform.IsChildOf(evaluation.centerEye.transform))
             quad_user.transform.localRotation = rot * quad_user.transform.localRotation;
     }
 
@@ -398,6 +609,10 @@ public class RedirectionController : MonoBehaviour
     {
         if (questionUI_ != null)
             questionUI_.SetActive(evaluation.State == ExperimentState.ES_QUESTION);
+        if (pidUI_ != null)
+            pidUI_.SetActive(evaluation.State == ExperimentState.ES_PID);
+        if (rotationIntroUI_ != null)
+            rotationIntroUI_.SetActive(evaluation.State == ExperimentState.ES_SLIDES);
 
         switch (evaluation.State)
         {
@@ -418,10 +633,24 @@ public class RedirectionController : MonoBehaviour
                     path.GetComponent<Renderer>().enabled = true;
                 break;
 
+            case ExperimentState.ES_PID:
+                quad_user.GetComponent<Renderer>().enabled = false;
+                quad.GetComponent<Renderer>().enabled = false;
+                RefreshPidPad();
+                break;
+
             case ExperimentState.ES_SLIDES:
                 {
                     quad_user.GetComponent<Renderer>().enabled = false;
                     quad.GetComponent<Renderer>().enabled = true;
+
+                    if (evaluation.EXP_TYPE == ExperimentType.ET_ROTATION)
+                    {
+                        quad.GetComponent<Renderer>().enabled = false;
+                        // The participant reads the actual pilot instructions and presses A.
+                        // Do not auto-skip these using the old binary task's slide flag.
+                        break;
+                    }
 
                     if (evaluation.SKIP_SLIDES)
                     {
@@ -474,7 +703,7 @@ public class RedirectionController : MonoBehaviour
                             // Orientation (randomized in 360 degrees)
                             float r1 = UnityEngine.Random.value; // in [0,1]
                             evaluation.recenterPose(r1 * (float)Mathf.PI * 2);
-                            RotateWorld(r1 * (float)Mathf.PI * 2);
+                            RotateWorld(r1 * (float)Mathf.PI * 2 - c_pathYaw);
 
                             evaluation.start_p = evaluation.getPos();
                             evaluation.start_yaw = evaluation.getYaw();
@@ -722,7 +951,7 @@ public class RedirectionController : MonoBehaviour
             case ExperimentState.ES_QUESTION:
                 {
                     quad_user.GetComponent<Renderer>().enabled = false;
-                    quad.GetComponent<Renderer>().enabled = true;
+                    quad.GetComponent<Renderer>().enabled = evaluation.EXP_TYPE != ExperimentType.ET_ROTATION;
                     if (evaluation.EXP_TYPE == ExperimentType.ET_ROTATION)
                         quad.GetComponent<Renderer>().material.mainTexture = pQuestionR_;
                     else if (evaluation.EXP_TYPE == ExperimentType.ET_TRANSLATION)
@@ -742,6 +971,9 @@ public class RedirectionController : MonoBehaviour
                     if (evaluation.EXP_TYPE == ExperimentType.ET_ROTATION)
                     {
                         evaluation.StateChange();
+                        // Initialize this trial's pose/gain in this same anchor update.
+                        // Otherwise one rendered frame inherits the prior trial's offset.
+                        UpdateInternal();
                         break;
                     }
 
