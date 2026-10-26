@@ -11,7 +11,7 @@ Rohan Gudla's Project 4 rotation work for the Rohan/Alix subgroup. Use the branc
 5. Read the headset instructions, release A and press it again to start. Turn physically in place; the joystick selects answers rather than moving the participant.
 6. Stop turning when the question appears. Select a rating and press A. Complete five practice and eighteen measured trials, then stop at Thank You.
 
-The gain grid is 0.6-1.4 in nine conditions, each repeated twice. The current rating UI has seven labeled options, including 0 for same speed. **Confirm the neutral option and final gain/wording choices with the advisor before the participant study.** This is a working pilot, not a claim of final protocol approval.
+The gain grid is 0.6-1.4 in nine conditions, each repeated twice. The rating UI uses seven labeled options from -3 through +3, including 0 for same speed, matching the scale already implemented in Christian/Logan's translation repository and the shared team repository. Keep that team convention for the rotation demonstration. This is a working pilot for the normal advisor review, not a claim of final study-protocol approval.
 
 ## Included functionality
 

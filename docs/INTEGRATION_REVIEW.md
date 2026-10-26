@@ -18,9 +18,9 @@ This branch contains Rohan Gudla's rotation pilot implementation, based on the t
 - October 24 physical Quest 3 through Link: Rohan completed the five practice and eighteen measured rotation trials, reaching Thank You. The saved session passed the physical-session validator with nine gain conditions repeated twice, complete status, and no synthetic override. The original dataset and its export remain local.
 - Before publication, runtime and Editor compilation and the ten standalone recorder checks are rerun. `Tools/RotationPilot/Check-Software.ps1` reproduces these compile/recorder checks after Unity has imported the project.
 
-## Protocol review still needed
+## Shared response scale and protocol status
 
-The rotation interface has seven choices from -3 through +3, including 0 for the same perceived speed. This follows the October 23 team proposal. Anusha's October 23 email lists six nonzero choices; the final treatment of the neutral option and the gain grid must be confirmed before participant testing. Metadata deliberately records the current wording as a working pilot protocol and leaves `scaleInterpretationConfirmed` false.
+The rotation interface has seven choices from -3 through +3, including 0 for the same perceived speed. On October 26, source inspection confirmed that both Christian/Logan's translation repository at `e85fe08` and the shared team repository at `4d8251b` implement this same seven-value range, display all seven choices, and accept zero. Rotation therefore retains the existing team convention; a separate rotation-only question about retaining zero is unnecessary. Metadata still records the wording as a working pilot protocol and leaves `scaleInterpretationConfirmed` false because matching team code is distinct from final advisor approval. The normal project demonstration and advisor review remain required.
 
 This branch retains nine gain levels from 0.6 to 1.4, two repetitions, and five practice trials. Do not reinterpret the recorded pilot as a different protocol or alter recorded responses to fit a later scale.
 
