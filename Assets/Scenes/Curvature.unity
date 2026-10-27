@@ -43934,18 +43934,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fbb26b47c36f9d34ba0c2b237dc8a239, type: 3}
   m_Name: 
   m_EditorClassIdentifier: '::'
-  DISTANCE: 2.5
+  DISTANCE: 5
   ANGLE: 1.5707964
   VALUES_MIN: 0.6
   VALUES_MAX: 1.4
   VALUES_MIN2: 0
   VALUES_MAX2: 0
-  STEPS: 8
+  STEPS: 10
   STEPS2: 1
-  TRIALS: 2
-  TEST_TRIALS: 5
+  TRIALS: 8
+  TEST_TRIALS: 4
   EXP_TYPE: 0
-  SKIP_SLIDES: 0
+  SKIP_SLIDES: 1
   insideUpdate: 0
   outsidePos: {x: 0, y: 0}
   outsideYaw: 0
@@ -43967,6 +43967,8 @@ MonoBehaviour:
     Value: 0
     Value2: 0
   ResponseSelection: 0
+  ParticipantID: 
+  PidSelectedKey: 4
   TotalTrials: 0
 --- !u!4 &1453692684
 Transform:

@@ -172,12 +172,14 @@ public class Evaluation : MonoBehaviour
             {
                 case 0: return -5f;
                 case 1: return -10f;
-                case 2: return -20f;
-                case 3: return -30f;
-                case 4: return 30f;
-                case 5: return 20f;
-                case 6: return 10f;
-                case 7: return 5f;
+                case 2: return -15f;
+                case 3: return -20f;
+                case 4: return -30f;
+                case 5: return 30f;
+                case 6: return 20f;
+                case 7: return 15f;
+                case 8: return 10f;
+                case 9: return 5f;
             }
         }
 
