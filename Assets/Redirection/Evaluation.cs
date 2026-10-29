@@ -83,7 +83,6 @@ public class Evaluation : MonoBehaviour
 
     public int ResponseSelection;
 
-
     // ---- Participant ID (numpad) ----
     public const int PID_MAX_LENGTH = 8;
     public string ParticipantID = "";
@@ -257,11 +256,17 @@ public class Evaluation : MonoBehaviour
             ResponseSelection + delta,
             RESPONSE_MIN,
             RESPONSE_MAX);
+
+        if (EXP_TYPE == ExperimentType.ET_CURVATURE && ResponseSelection == 0)
+            ResponseSelection = Mathf.Clamp(ResponseSelection + delta, RESPONSE_MIN, RESPONSE_MAX);
     }
 
     public void SubmitResponse()
     {
         if (State != ExperimentState.ES_QUESTION)
+            return;
+
+        if (EXP_TYPE == ExperimentType.ET_CURVATURE && ResponseSelection == 0)
             return;
 
         ActiveTrial.Response = ResponseSelection;
@@ -391,6 +396,19 @@ public class Evaluation : MonoBehaviour
             }
         }
 
+        string pidPath = GetFilePath("results");
+        using (StreamWriter writer =
+                new StreamWriter(pidPath, false))
+        {
+            writer.WriteLine(ParticipantID);
+            for (int i = 0; i <= Mathf.Min(TotalTrials - 1, ActiveTrialNumber); i++)
+            {
+                Trial trial = allTrials[i];
+
+                writer.WriteLine($"{trial.Value}\t{trial.Value2}\t{trial.Reaction}\t{trial.Response}");
+            }
+        }
+
 //        Debug.Log("path (" + path + ")");
     }
 
@@ -419,6 +437,11 @@ public class Evaluation : MonoBehaviour
         File.AppendAllText(
             path,
             line + Environment.NewLine);
+
+        string pidPath = GetFilePath("data");
+        File.AppendAllText(
+            pidPath,
+            line + Environment.NewLine);
     }
 
     public void writeData(string text)
@@ -433,6 +456,11 @@ public class Evaluation : MonoBehaviour
 
         File.AppendAllText(
             path,
+            "\n\n" + text + "\n\n");
+
+        string pidPath = GetFilePath("data");
+        File.AppendAllText(
+            pidPath,
             "\n\n" + text + "\n\n");
     }
 

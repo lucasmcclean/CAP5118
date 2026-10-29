@@ -57,6 +57,7 @@ public class RedirectionController : MonoBehaviour
     GameObject questionUI_;
     Image[] questionBoxes_;
     Text[] questionLabels_;
+    int[] questionValues_;
     readonly Color32 questionBoxColor_ = new Color32(229, 231, 235, 255);
     readonly Color32 questionBoxSelectedColor_ = new Color32(47, 111, 237, 255);
 
@@ -219,19 +220,26 @@ public class RedirectionController : MonoBehaviour
         if (font == null)
             font = Resources.GetBuiltinResource<Font>("Arial.ttf");
 
-        int optionCount = Evaluation.RESPONSE_MAX - Evaluation.RESPONSE_MIN + 1;
+        bool showLabels = evaluation.EXP_TYPE == ExperimentType.ET_CURVATURE;
+        int optionCount = Evaluation.RESPONSE_MAX - Evaluation.RESPONSE_MIN + (showLabels ? 0 : 1);
         questionBoxes_ = new Image[optionCount];
         questionLabels_ = new Text[optionCount];
+        questionValues_ = new int[optionCount];
 
-        const float boxSize = 76f;
-        const float boxGap = 12f;
-        const float boxY = -145f;
+        float boxSize = showLabels ? 96f : 76f;
+        float boxGap = showLabels ? 32f : 12f;
+        float boxY = showLabels ? -120f : -145f;
+
         float totalWidth = optionCount * boxSize + (optionCount - 1) * boxGap;
         float firstX = -totalWidth * 0.5f + boxSize * 0.5f;
 
-        for (int i = 0; i < optionCount; i++)
+        int optionIndex = 0;
+        for (int value = Evaluation.RESPONSE_MIN; value <= Evaluation.RESPONSE_MAX; value++)
         {
-            int value = Evaluation.RESPONSE_MIN + i;
+            if (showLabels && value == 0)
+                continue;
+
+            float boxX = firstX + optionIndex * (boxSize + boxGap);
 
             GameObject boxGO = new GameObject("Answer " + value, typeof(RectTransform), typeof(Image));
             boxGO.transform.SetParent(questionUI_.transform, false);
@@ -240,13 +248,13 @@ public class RedirectionController : MonoBehaviour
             boxRect.anchorMin = new Vector2(0.5f, 0.5f);
             boxRect.anchorMax = new Vector2(0.5f, 0.5f);
             boxRect.pivot = new Vector2(0.5f, 0.5f);
-            boxRect.anchoredPosition = new Vector2(firstX + i * (boxSize + boxGap), boxY);
+            boxRect.anchoredPosition = new Vector2(boxX, boxY);
             boxRect.sizeDelta = new Vector2(boxSize, boxSize);
 
             Image boxImage = boxGO.GetComponent<Image>();
             boxImage.raycastTarget = false;
             boxImage.color = questionBoxColor_;
-            questionBoxes_[i] = boxImage;
+            questionBoxes_[optionIndex] = boxImage;
 
             Outline outline = boxGO.AddComponent<Outline>();
             outline.effectColor = new Color32(40, 40, 40, 255);
@@ -269,7 +277,34 @@ public class RedirectionController : MonoBehaviour
             label.raycastTarget = false;
             label.color = Color.black;
             label.text = value.ToString();
-            questionLabels_[i] = label;
+            questionLabels_[optionIndex] = label;
+            questionValues_[optionIndex] = value;
+
+            if (showLabels)
+            {
+                GameObject dirGO = new GameObject("Direction " + value, typeof(RectTransform), typeof(Text));
+                dirGO.transform.SetParent(questionUI_.transform, false);
+
+                RectTransform dirRect = dirGO.GetComponent<RectTransform>();
+                dirRect.anchorMin = new Vector2(0.5f, 0.5f);
+                dirRect.anchorMax = new Vector2(0.5f, 0.5f);
+                dirRect.pivot = new Vector2(0.5f, 0.5f);
+                dirRect.anchoredPosition = new Vector2(boxX, boxY - boxSize * 0.5f - 20f);
+                dirRect.sizeDelta = new Vector2(140f, 34f);
+
+                Text dirLabel = dirGO.GetComponent<Text>();
+                dirLabel.font = font;
+                dirLabel.fontSize = 18;
+                dirLabel.fontStyle = FontStyle.Bold;
+                dirLabel.alignment = TextAnchor.MiddleCenter;
+                dirLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+                dirLabel.verticalOverflow = VerticalWrapMode.Overflow;
+                dirLabel.raycastTarget = false;
+                dirLabel.color = new Color32(40, 40, 40, 255);
+                dirLabel.text = GetResponseLabel(value);
+            }
+
+            optionIndex++;
         }
 
         CreateQuestionText(
@@ -319,13 +354,27 @@ public class RedirectionController : MonoBehaviour
 
         for (int i = 0; i < questionBoxes_.Length; i++)
         {
-            int value = Evaluation.RESPONSE_MIN + i;
+            int value = questionValues_[i];
             bool selected = value == evaluation.ResponseSelection;
 
             questionBoxes_[i].color =
                 selected ? questionBoxSelectedColor_ : questionBoxColor_;
             questionLabels_[i].color =
                 selected ? Color.white : Color.black;
+        }
+    }
+
+    private static string GetResponseLabel(int value)
+    {
+        switch (value)
+        {
+            case -3: return "very left";
+            case -2: return "left";
+            case -1: return "slightly left";
+            case 1: return "slightly right";
+            case 2: return "right";
+            case 3: return "very right";
+            default: return "";
         }
     }
 
