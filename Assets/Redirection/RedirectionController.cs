@@ -776,6 +776,7 @@ public class RedirectionController : MonoBehaviour
                             // Orientation (randomized in 360 degrees)
                             float r1 = UnityEngine.Random.value;
                             e_virtualYaw = r1 * (float)Mathf.PI * 2;
+                            evaluation.ActiveTrial.VirtualYaw = e_virtualYaw;
                             evaluation.recenterPose(e_virtualYaw);
                             ApplyPathYaw(e_virtualYaw);
                         }
@@ -843,6 +844,16 @@ public class RedirectionController : MonoBehaviour
                             if (theta > 3.1415f / 2)
                                 Debug.Log("ERROR -- EXCEEDED");
                             Debug.Log("left(" + leftTurn + ") -- center(" +c.x+ ", " +c.y+ ")  -- diff.x(" + diff.x + ") -- diff.z(" + diff.z + ") -- pt.x(" + pt.x + ") -- pt.z(" + pt.y + ") -- theta(" + theta / (float)DTOR + ") -- offsetYaw(" + evaluation.offsetYaw / (float)DTOR + ")");
+
+                            float realYaw = periodicMinusPeriodic(evaluation.getYaw(), evaluation.start_yaw);
+                            evaluation.writeLog(
+                                p.x,
+                                p.y,
+                                pt.x,
+                                pt.y,
+                                realYaw / (float)DTOR,
+                                theta / (float)DTOR,
+                                false);
 
                             // Check walk distance
                             if (Mathf.Abs(pt.y) >= evaluation.DISTANCE)

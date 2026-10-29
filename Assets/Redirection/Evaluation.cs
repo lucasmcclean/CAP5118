@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -39,6 +40,13 @@ public class Trial
     public int Step2;
     public float Value;
     public float Value2;
+
+    public float VirtualYaw;   // radians
+    public Vector2 StartPos;   // meters
+    public float StartYaw;     // radians
+    public float TimeStartMs;
+    public float TimeWalkEndMs;
+    public float TimeAnswerMs;
 }
 
 public class Evaluation : MonoBehaviour
@@ -270,6 +278,7 @@ public class Evaluation : MonoBehaviour
             return;
 
         ActiveTrial.Response = ResponseSelection;
+        ActiveTrial.TimeAnswerMs = nowMs();
 
         if (ResponseSelection < 0)
             ActiveTrial.Reaction = Reaction.RE_UP;
@@ -335,6 +344,27 @@ public class Evaluation : MonoBehaviour
         return Path.Combine(Application.persistentDataPath, name + ".txt");
     }
 
+    private float nowMs()
+    {
+        return Time.realtimeSinceStartup * 1000f - StartTime;
+    }
+
+    // A session always starts from empty files, so a run with an existing
+    // participant ID or an existing data file replaces it instead of appending
+    private void ResetSessionFiles()
+    {
+        File.WriteAllText(
+            Path.Combine(Application.persistentDataPath, "results.txt"),
+            string.Empty);
+
+        File.WriteAllText(
+            Path.Combine(Application.persistentDataPath, "data.txt"),
+            string.Empty);
+
+        File.WriteAllText(GetFilePath("results"), string.Empty);
+        File.WriteAllText(GetFilePath("data"), string.Empty);
+    }
+
 
 
     public void recenterPose()
@@ -380,6 +410,12 @@ public class Evaluation : MonoBehaviour
         if (ActiveTrialNumber < 0)
             return;
 
+        writeLegacyResults();
+        writePidResults();
+    }
+
+    private void writeLegacyResults()
+    {
         string path = Path.Combine(
             Application.persistentDataPath,
             "results.txt");
@@ -396,20 +432,41 @@ public class Evaluation : MonoBehaviour
             }
         }
 
-        string pidPath = GetFilePath("results");
+//        Debug.Log("path (" + path + ")");
+    }
+
+    private void writePidResults()
+    {
         using (StreamWriter writer =
-                new StreamWriter(pidPath, false))
+                new StreamWriter(GetFilePath("results"), false))
         {
             writer.WriteLine(ParticipantID);
+            writer.WriteLine(
+                "trial\tstep\tstep2\tgain\tgain2\treaction\tresponse\t" +
+                "rot_deg\tstart_x\tstart_y\tstart_yaw_deg\t" +
+                "t_start_ms\tt_walk_end_ms\tt_answer_ms");
+
             for (int i = 0; i <= Mathf.Min(TotalTrials - 1, ActiveTrialNumber); i++)
             {
                 Trial trial = allTrials[i];
 
-                writer.WriteLine($"{trial.Value}\t{trial.Value2}\t{trial.Reaction}\t{trial.Response}");
+                writer.WriteLine(string.Join("\t",
+                    i.ToString(CultureInfo.InvariantCulture),
+                    trial.Step.ToString(CultureInfo.InvariantCulture),
+                    trial.Step2.ToString(CultureInfo.InvariantCulture),
+                    trial.Value.ToString(CultureInfo.InvariantCulture),
+                    trial.Value2.ToString(CultureInfo.InvariantCulture),
+                    trial.Reaction.ToString(),
+                    trial.Response.ToString(CultureInfo.InvariantCulture),
+                    (trial.VirtualYaw * Mathf.Rad2Deg).ToString("F3", CultureInfo.InvariantCulture),
+                    trial.StartPos.x.ToString("F4", CultureInfo.InvariantCulture),
+                    trial.StartPos.y.ToString("F4", CultureInfo.InvariantCulture),
+                    (trial.StartYaw * Mathf.Rad2Deg).ToString("F3", CultureInfo.InvariantCulture),
+                    trial.TimeStartMs.ToString("F1", CultureInfo.InvariantCulture),
+                    trial.TimeWalkEndMs.ToString("F1", CultureInfo.InvariantCulture),
+                    trial.TimeAnswerMs.ToString("F1", CultureInfo.InvariantCulture)));
             }
         }
-
-//        Debug.Log("path (" + path + ")");
     }
 
     public void writeLog(
@@ -418,15 +475,11 @@ public class Evaluation : MonoBehaviour
         float virtualX,
         float virtualY,
         float realYaw,
-        float virtualYaw)
+        float virtualYaw,
+        bool writeLegacyFile = true)
     {
         if (ActiveTrialNumber < 0)
             return;
-
-        string path =
-            Path.Combine(
-                Application.persistentDataPath,
-                "data.txt");
 
         string line =
             $"{realX}\t{realY}\t" +
@@ -434,9 +487,17 @@ public class Evaluation : MonoBehaviour
             $"{realYaw}\t" +
             $"{virtualYaw}";
 
-        File.AppendAllText(
-            path,
-            line + Environment.NewLine);
+        if (writeLegacyFile)
+        {
+            string path =
+                Path.Combine(
+                    Application.persistentDataPath,
+                    "data.txt");
+
+            File.AppendAllText(
+                path,
+                line + Environment.NewLine);
+        }
 
         string pidPath = GetFilePath("data");
         File.AppendAllText(
@@ -486,6 +547,7 @@ public class Evaluation : MonoBehaviour
 
             case ExperimentState.ES_PID:
                 State = ExperimentState.ES_SLIDES;
+                ResetSessionFiles();
                 File.AppendAllText(GetFilePath("data"), "PID: " + ParticipantID + Environment.NewLine);
                 writeData("ES_SLIDES");
                 StartTime = Time.realtimeSinceStartup * 1000f;
@@ -504,6 +566,7 @@ public class Evaluation : MonoBehaviour
             case ExperimentState.ES_ACTIVE:
 
                 State = ExperimentState.ES_QUESTION;
+                ActiveTrial.TimeWalkEndMs = nowMs();
                 ResponseSelection = 0;
                 ActiveTrial.Response = 0;
                 writeData("ES_QUESTION");
@@ -537,6 +600,9 @@ public class Evaluation : MonoBehaviour
                 writeData("ES_ACTIVE");
                 start_p = new Vector2(getPos().x, getPos().y);
                 start_yaw = getYaw();
+                ActiveTrial.StartPos = start_p;
+                ActiveTrial.StartYaw = start_yaw;
+                ActiveTrial.TimeStartMs = nowMs();
 
                 break;
 
