@@ -31,6 +31,12 @@ public class ButtonHandler : MonoBehaviour
             OnAPressed();
         }
 
+        if (evaluation.State == ExperimentState.ES_SLIDES
+            && OVRInput.Get(OVRInput.Button.One))
+        {
+            evaluation.StateChange();
+        }
+
         // B button pressed
         if (OVRInput.GetDown(OVRInput.Button.Two))
         {
@@ -118,17 +124,17 @@ public class ButtonHandler : MonoBehaviour
         {
             evaluation.SubmitResponse();
         }
+
+        else if (evaluation.State == ExperimentState.ES_READYQUESTION
+            || evaluation.State == ExperimentState.ES_THANKYOU)
+        {
+            evaluation.StateChange();
+        }
     }
 
     private void OnBPressed()
     {
         Debug.Log("B button pressed");
-
-        if (evaluation.State == ExperimentState.ES_READYQUESTION
-            || evaluation.State == ExperimentState.ES_THANKYOU)
-        {
-            evaluation.StateChange();
-        }
     }
 
     private void OnTriggerPressed()
