@@ -33,6 +33,9 @@ public enum Reaction
     RE_NONE
 }
 
+// Unity yaw increases when turning right and decreases when turning left.
+public enum RotationTurnDirection { Left = -1, Right = 1 }
+
 [Serializable]
 public class Trial
 {
@@ -43,6 +46,7 @@ public class Trial
     public float Value;
     public float Value2;
     public bool ResponseRecorded;
+    public RotationTurnDirection TurnDirection;
 }
 
 public class Evaluation : MonoBehaviour
@@ -51,7 +55,7 @@ public class Evaluation : MonoBehaviour
     public string ParticipantId = "";
     public string ScaleInterpretation = "Pending advisor confirmation";
     public bool ScaleInterpretationConfirmed = false;
-    public const string WorkingRotationScale = "Team working rotation pilot: -3 much slower, -2 slower, -1 slightly slower, 0 same speed, +1 slightly faster, +2 faster, +3 much faster than physical turning. Adapted from Christian/Lucas's October 23 seven-choice proposal; not recorded as advisor-confirmed.";
+    public const string WorkingRotationScale = "Rotation pilot six-choice scale: -3 Uncomfortably smaller, -2 Comfortably small, -1 Maybe small, +1 Maybe large, +2 Comfortably large, +3 Uncomfortably larger. No zero option. Revised at Rohan's request on October 29; not recorded as advisor-confirmed.";
     public int PracticeTrialCount { get; private set; }
     public string SessionDirectory { get; private set; }
     public bool IsSoftwareSimulation { get; private set; }
@@ -96,6 +100,10 @@ public class Evaluation : MonoBehaviour
 
     public const int RESPONSE_MIN = -3;
     public const int RESPONSE_MAX = 3;
+    private static readonly int[] RotationResponses = { -3, -2, -1, 1, 2, 3 };
+
+    public int ResponseOptionCount => EXP_TYPE == ExperimentType.ET_ROTATION ? RotationResponses.Length : RESPONSE_MAX - RESPONSE_MIN + 1;
+    public int ResponseOptionAt(int index) => EXP_TYPE == ExperimentType.ET_ROTATION ? RotationResponses[index] : RESPONSE_MIN + index;
 
     public int ResponseSelection;
 
@@ -106,6 +114,8 @@ public class Evaluation : MonoBehaviour
 
     private Trial[] allTrials;
     private int[] completedTrials;
+    private int[] leftRotationTrials, rightRotationTrials;
+    private int rotationTrialsScheduled;
 
     private System.Random random = new System.Random();
 
@@ -114,6 +124,8 @@ public class Evaluation : MonoBehaviour
     {
         if (STEPS < 1 || STEPS2 < 1 || TRIALS < 1 || TEST_TRIALS < 0)
             throw new InvalidOperationException("Trial counts must be positive; practice count cannot be negative.");
+        if (EXP_TYPE == ExperimentType.ET_ROTATION && TRIALS % 2 != 0)
+            throw new InvalidOperationException("Rotation needs an even repetition count to balance left and right turns.");
 
         // Initialize values
         PracticeTrialCount = TEST_TRIALS;
@@ -132,6 +144,12 @@ public class Evaluation : MonoBehaviour
 
         allTrials = new Trial[TotalTrials];
         completedTrials = new int[STEPS * STEPS2];
+        if (EXP_TYPE == ExperimentType.ET_ROTATION)
+        {
+            leftRotationTrials = new int[STEPS * STEPS2];
+            rightRotationTrials = new int[STEPS * STEPS2];
+            rotationTrialsScheduled = 0;
+        }
 
         for (int i = 0; i < completedTrials.Length; i++)
             completedTrials[i] = 0;
@@ -163,6 +181,7 @@ public class Evaluation : MonoBehaviour
                 ActiveTrialNumber++;
 
             ActiveTrial = allTrials[ActiveTrialNumber];
+            AssignRotationDirection();
 
             SetNextStep();
 
@@ -185,7 +204,15 @@ public class Evaluation : MonoBehaviour
             }
 
             ActiveTrial.Value2 = GetGainToStep2(ActiveTrial.Step2);
+            AssignRotationDirection();
         }
+    }
+
+    private void AssignRotationDirection()
+    {
+        if (EXP_TYPE != ExperimentType.ET_ROTATION) return;
+        ActiveTrial.TurnDirection = rotationTrialsScheduled++ % 2 == 0 ?
+            RotationTurnDirection.Left : RotationTurnDirection.Right;
     }
 
     private float GetGainToStep(int step)
@@ -231,10 +258,14 @@ public class Evaluation : MonoBehaviour
 //        Debug.Log("SetNextStep()");
 
         // Find number of free slots
+        int[] counts = EXP_TYPE == ExperimentType.ET_ROTATION ?
+            (ActiveTrial.TurnDirection == RotationTurnDirection.Left ? leftRotationTrials : rightRotationTrials) :
+            completedTrials;
+        int limit = EXP_TYPE == ExperimentType.ET_ROTATION ? TRIALS / 2 : TRIALS;
         int slots = 0;
-        for (int i = 0; i < completedTrials.Length; i++)
+        for (int i = 0; i < counts.Length; i++)
         {
-            if (completedTrials[i] < TRIALS)
+            if (counts[i] < limit)
                 slots++;
         }
 
@@ -245,14 +276,14 @@ public class Evaluation : MonoBehaviour
         int n = random.Next(0, slots);
 
         int cnt = 0;
-        for (int i = 0; i < completedTrials.Length; i++)
+        for (int i = 0; i < counts.Length; i++)
         {
-            if (completedTrials[i] >= TRIALS)
+            if (counts[i] >= limit)
                 continue;
 
             if (cnt == n)
             {
-                completedTrials[i]++;
+                counts[i]++;
 
                 ActiveTrial.Step = (int)(i / STEPS2);
                 ActiveTrial.Step2 = i - (int)(i / STEPS2) * STEPS2;
@@ -278,10 +309,17 @@ public class Evaluation : MonoBehaviour
         if (State != ExperimentState.ES_QUESTION)
             return;
 
-        ResponseSelection = Mathf.Clamp(
-            ResponseSelection + delta,
-            RESPONSE_MIN,
-            RESPONSE_MAX);
+        if (delta == 0) return;
+        if (EXP_TYPE != ExperimentType.ET_ROTATION)
+        {
+            ResponseSelection = Mathf.Clamp(ResponseSelection + delta, RESPONSE_MIN, RESPONSE_MAX);
+            return;
+        }
+        int index = Array.IndexOf(RotationResponses, ResponseSelection);
+        // Zero represents no selection, not a response. The first flick selects
+        // the nearest option on the chosen side of the scale.
+        if (index < 0) index = delta > 0 ? 2 : 3;
+        ResponseSelection = RotationResponses[Mathf.Clamp(index + delta, 0, RotationResponses.Length - 1)];
     }
 
     // Christian/Logan's 3-by-4 headset keypad, using the existing recorder ID.
@@ -313,6 +351,8 @@ public class Evaluation : MonoBehaviour
     public void SubmitResponse()
     {
         if (State != ExperimentState.ES_QUESTION)
+            return;
+        if (EXP_TYPE == ExperimentType.ET_ROTATION && Array.IndexOf(RotationResponses, ResponseSelection) < 0)
             return;
 
         ActiveTrial.Response = ResponseSelection;
@@ -444,15 +484,19 @@ public class Evaluation : MonoBehaviour
                 scaleInterpretation = ScaleInterpretation,
                 scaleInterpretationConfirmed = ScaleInterpretationConfirmed,
                 protocolStatus = ScaleInterpretationConfirmed ? "confirmed_protocol" : "working_pilot_protocol_for_review",
-                instructionSource = "Rotation wording adapted from team Discord, October 23, Christian 17:57 and Lucas 17:58; current inherited gain grid retained",
-                expectedMeasuredTrials = TotalTrials, practiceTrials = TEST_TRIALS + (ActiveTrialNumber < 0 ? 1 : 0),
+                instructionSource = EXP_TYPE == ExperimentType.ET_ROTATION ? "Comfort scale and alternating directions requested by Rohan on October 29; inherited gain grid retained" : "Team working pilot instructions",
+                expectedMeasuredTrials = TotalTrials, practiceTrials = PracticeTrialCount,
                 steps = STEPS, steps2 = STEPS2, repetitions = TRIALS,
                 minimumGain = VALUES_MIN, maximumGain = VALUES_MAX,
                 minimumGain2 = VALUES_MIN2, maximumGain2 = VALUES_MAX2,
                 virtualAngleRadians = ANGLE, virtualDistanceMetres = DISTANCE,
                 scene = gameObject.scene.path, unityVersion = Application.unityVersion,
                 createdUtc = DateTime.UtcNow.ToString("o"),
-                responseScale = "-3,-2,-1,0,1,2,3"
+                responseScale = EXP_TYPE == ExperimentType.ET_ROTATION ? "-3,-2,-1,1,2,3" : "-3,-2,-1,0,1,2,3",
+                directionSchedule = EXP_TYPE == ExperimentType.ET_ROTATION ? "alternate_left_first_across_practice_and_measured" : "",
+                rotationPresentation = EXP_TYPE == ExperimentType.ET_ROTATION ? "in_scene_direction_sign_continuous_view_2026_11_02" : "",
+                rotationWrongDirectionReminder = EXP_TYPE == ExperimentType.ET_ROTATION ? "in_scene_turn_direction_only_v1" : "",
+                repetitionsPerDirection = EXP_TYPE == ExperimentType.ET_ROTATION ? TRIALS / 2 : 0
             };
             session = new PilotSessionRecorder(root, ParticipantId, EXP_TYPE.ToString(),
                 IsSoftwareSimulation, TotalTrials, JsonUtility.ToJson(metadata, true));
@@ -478,9 +522,9 @@ public class Evaluation : MonoBehaviour
     [Serializable] private class PilotMetadata
     {
         public string participantId, experiment, scene, unityVersion, createdUtc, responseScale, scaleInterpretation,
-            protocolStatus, instructionSource;
+            protocolStatus, instructionSource, directionSchedule, rotationPresentation, rotationWrongDirectionReminder;
         public bool softwareSimulation, scaleInterpretationConfirmed;
-        public int expectedMeasuredTrials, practiceTrials, steps, steps2, repetitions;
+        public int expectedMeasuredTrials, practiceTrials, steps, steps2, repetitions, repetitionsPerDirection;
         public float minimumGain, maximumGain, minimumGain2, maximumGain2, virtualAngleRadians, virtualDistanceMetres;
     }
 
@@ -517,6 +561,7 @@ public class Evaluation : MonoBehaviour
 
                 State = ExperimentState.ES_INSTRUCTION;
                 writeData("ES_INSTRUCTION");
+                if (EXP_TYPE == ExperimentType.ET_ROTATION) writeData("TURN_DIRECTION_" + ActiveTrial.TurnDirection.ToString().ToUpperInvariant());
                 start_p = new Vector2(getPos().x, getPos().y);
                 start_yaw = getYaw();
 
@@ -542,6 +587,7 @@ public class Evaluation : MonoBehaviour
 
                     State = ExperimentState.ES_INSTRUCTION;
                     writeData("ES_INSTRUCTION");
+                    if (EXP_TYPE == ExperimentType.ET_ROTATION) writeData("TURN_DIRECTION_" + ActiveTrial.TurnDirection.ToString().ToUpperInvariant());
                     start_p = new Vector2(getPos().x, getPos().y);
                     start_yaw = getYaw();
                 }

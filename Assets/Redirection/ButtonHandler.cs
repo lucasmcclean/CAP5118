@@ -152,6 +152,10 @@ public class ButtonHandler : MonoBehaviour
         {
             evaluation.StateChange();
         }
+        else if (evaluation.State == ExperimentState.ES_INSTRUCTION && evaluation.EXP_TYPE == ExperimentType.ET_ROTATION)
+        {
+            evaluation.StateChange();
+        }
         else if (evaluation.State == ExperimentState.ES_QUESTION)
         {
             evaluation.SubmitResponse();
@@ -183,7 +187,7 @@ public class ButtonHandler : MonoBehaviour
     {
         Debug.Log("Thumbstick LEFT");
 
-        if (evaluation.State == ExperimentState.ES_QUESTION)
+        if (evaluation.State == ExperimentState.ES_QUESTION && evaluation.EXP_TYPE != ExperimentType.ET_ROTATION)
         {
             evaluation.AdjustResponse(-1);
         }
@@ -194,7 +198,7 @@ public class ButtonHandler : MonoBehaviour
     {
         Debug.Log("Thumbstick RIGHT");
 
-        if (evaluation.State == ExperimentState.ES_QUESTION)
+        if (evaluation.State == ExperimentState.ES_QUESTION && evaluation.EXP_TYPE != ExperimentType.ET_ROTATION)
         {
             evaluation.AdjustResponse(1);
         }
@@ -205,11 +209,15 @@ public class ButtonHandler : MonoBehaviour
     {
         Debug.Log("Thumbstick UP");
         if (evaluation.State == ExperimentState.ES_PID) evaluation.MovePidSelection(0, -1);
+        else if (evaluation.State == ExperimentState.ES_QUESTION && evaluation.EXP_TYPE == ExperimentType.ET_ROTATION)
+            evaluation.AdjustResponse(-1);
     }
 
     private void OnThumbstickDown()
     {
         Debug.Log("Thumbstick DOWN");
         if (evaluation.State == ExperimentState.ES_PID) evaluation.MovePidSelection(0, 1);
+        else if (evaluation.State == ExperimentState.ES_QUESTION && evaluation.EXP_TYPE == ExperimentType.ET_ROTATION)
+            evaluation.AdjustResponse(1);
     }
 }

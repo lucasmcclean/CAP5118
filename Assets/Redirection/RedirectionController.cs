@@ -15,6 +15,14 @@ public class RedirectionController : MonoBehaviour
     float e_maxAngle = 0;
     float e_maxDistance = 0;
     float e_virtualYaw = 0;
+    float e_lastRawYaw = 0;
+    float e_accumulatedTurn = 0;
+    float e_trialYawOffset = 0;
+    int rotationCueTrial_ = int.MinValue;
+    float rotationWrongWayDegrees_, rotationCorrectiveDegrees_;
+    bool rotationReminderVisible_, rotationReminderNeedsPosition_;
+    const float WrongDirectionTriggerDegrees = 10f;
+    const float WrongDirectionClearDegrees = 3f;
 
     const double DTOR = Mathf.PI / 180.0;
 
@@ -62,7 +70,10 @@ public class RedirectionController : MonoBehaviour
     Text[] pidKeyLabels_;
     Text pidDisplay_, pidStatus_;
     GameObject rotationIntroUI_;
-    Text rotationTrialLabel_;
+    GameObject rotationDirectionUI_;
+    Text rotationDirectionLabel_;
+    GameObject rotationWrongDirectionUI_;
+    Text rotationWrongDirectionLabel_;
     readonly Color32 questionBoxColor_ = new Color32(229, 231, 235, 255);
     readonly Color32 questionBoxSelectedColor_ = new Color32(47, 111, 237, 255);
     OVRCameraRig subscribedRig_;
@@ -194,7 +205,12 @@ public class RedirectionController : MonoBehaviour
 
         BuildQuestionScale();
         BuildPidPad();
-        if (evaluation.EXP_TYPE == ExperimentType.ET_ROTATION) BuildRotationIntro();
+        if (evaluation.EXP_TYPE == ExperimentType.ET_ROTATION)
+        {
+            BuildRotationIntro();
+            BuildRotationDirection();
+            BuildWrongDirectionReminder();
+        }
     }
 
     private GameObject CreateWorldPanel(string name)
@@ -254,14 +270,118 @@ public class RedirectionController : MonoBehaviour
         Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         CreatePanelText(rotationIntroUI_, "Title", "Rotation pilot", 245, 36, font, true);
         CreatePanelText(rotationIntroUI_, "Instructions",
-            "Stand in place and slowly turn your body.\nDo not walk or use the stick for movement.\nStop turning when the rating screen appears.\nRate virtual turning compared with your body.\nFlick either stick left/right; press A to confirm.\n" +
-            evaluation.PracticeTrialCount + " practice trials, then " + evaluation.TotalTrials + " recorded trials.",
+            "Stand in place and follow each LEFT or RIGHT cue.\nSlowly turn your body in the indicated direction.\nStop when the rating screen appears.\nRate how the amount of rotation felt.\nFlick either stick up/down; press A to confirm.\nDo not walk or use the stick to move.",
             55, 26, font, false, 270);
         CreatePanelText(rotationIntroUI_, "Scale",
-            "-3 = much slower    0 = same speed    +3 = much faster\nIntermediate values mean smaller differences.",
+            "Choose the description that best matches your experience.",
             -145, 23, font, false, 100);
         CreatePanelText(rotationIntroUI_, "Continue", "Press A when ready to begin", -255, 28, font, true);
         rotationIntroUI_.SetActive(false);
+    }
+
+    private void BuildRotationDirection()
+    {
+        // A small sign anchored in the environment, independent of the head-locked forms.
+        rotationDirectionUI_ = new GameObject("RotationDirection", typeof(RectTransform), typeof(Canvas));
+        rotationDirectionUI_.transform.SetParent(transform, false);
+        Canvas canvas = rotationDirectionUI_.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.worldCamera = cameraRig.GetComponent<OVRCameraRig>().centerEyeAnchor.GetComponent<Camera>();
+        RectTransform rect = rotationDirectionUI_.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(700, 210);
+        rect.localScale = Vector3.one / 800f;
+        AddPanelBackground(rotationDirectionUI_);
+        rotationDirectionUI_.transform.Find("Background").GetComponent<Image>().color = new Color32(18, 24, 32, 210);
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        rotationDirectionLabel_ = CreatePanelText(rotationDirectionUI_, "Direction", "", 45, 48, font, true, 70);
+        Text instructions = CreatePanelText(rotationDirectionUI_, "Instructions",
+            "Press A when ready. Turn slowly in place.\nStop when the rating appears.", -40, 26, font, false, 80);
+        rotationDirectionLabel_.rectTransform.sizeDelta = new Vector2(660, 70);
+        instructions.rectTransform.sizeDelta = new Vector2(660, 80);
+        rotationDirectionLabel_.color = instructions.color = Color.white;
+        rotationDirectionUI_.SetActive(false);
+    }
+
+    private void PositionRotationDirection(OVRCameraRig rig)
+    {
+        if (rotationDirectionUI_ == null || evaluation.State != ExperimentState.ES_INSTRUCTION ||
+            rotationCueTrial_ == evaluation.ActiveTrialNumber) return;
+        rotationCueTrial_ = evaluation.ActiveTrialNumber;
+        PositionRotationSign(rotationDirectionUI_, rig.centerEyeAnchor);
+    }
+
+    private static void PositionRotationSign(GameObject sign, Transform eye)
+    {
+        Vector3 forward = Vector3.ProjectOnPlane(eye.forward, Vector3.up);
+        if (forward.sqrMagnitude < .001f) forward = Vector3.forward;
+        forward.Normalize();
+        sign.transform.SetPositionAndRotation(
+            eye.position + forward * 1.6f + Vector3.down * .18f,
+            Quaternion.LookRotation(forward, Vector3.up));
+    }
+
+    private void BuildWrongDirectionReminder()
+    {
+        rotationWrongDirectionUI_ = new GameObject("RotationDirectionReminder", typeof(RectTransform), typeof(Canvas));
+        rotationWrongDirectionUI_.transform.SetParent(transform, false);
+        Canvas canvas = rotationWrongDirectionUI_.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.worldCamera = cameraRig.GetComponent<OVRCameraRig>().centerEyeAnchor.GetComponent<Camera>();
+        RectTransform rect = rotationWrongDirectionUI_.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(600, 150);
+        rect.localScale = Vector3.one / 800f;
+        AddPanelBackground(rotationWrongDirectionUI_);
+        rotationWrongDirectionUI_.transform.Find("Background").GetComponent<Image>().color = new Color32(18, 24, 32, 210);
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        rotationWrongDirectionLabel_ = CreatePanelText(rotationWrongDirectionUI_, "Direction", "", 25, 42, font, true, 60);
+        Text hint = CreatePanelText(rotationWrongDirectionUI_, "Hint", "Slowly turn in the indicated direction.", -35, 24, font, false, 40);
+        rotationWrongDirectionLabel_.rectTransform.sizeDelta = new Vector2(570, 60);
+        hint.rectTransform.sizeDelta = new Vector2(570, 40);
+        rotationWrongDirectionLabel_.color = hint.color = Color.white;
+        rotationWrongDirectionUI_.SetActive(false);
+    }
+
+    private void TrackWrongDirection(float physicalStep)
+    {
+        float directedDegrees = physicalStep * (int)evaluation.ActiveTrial.TurnDirection * Mathf.Rad2Deg;
+        if (!rotationReminderVisible_)
+        {
+            // Ignore small reversals and tracking jitter; remind after a clear wrong-way turn.
+            rotationWrongWayDegrees_ = Mathf.Max(0, rotationWrongWayDegrees_ - directedDegrees);
+            if (rotationWrongWayDegrees_ >= WrongDirectionTriggerDegrees)
+            {
+                rotationReminderVisible_ = true;
+                rotationReminderNeedsPosition_ = true;
+                rotationCorrectiveDegrees_ = 0;
+            }
+        }
+        else
+        {
+            rotationCorrectiveDegrees_ = Mathf.Max(0, rotationCorrectiveDegrees_ + directedDegrees);
+            if (rotationCorrectiveDegrees_ >= WrongDirectionClearDegrees)
+            {
+                rotationReminderVisible_ = false;
+                rotationWrongWayDegrees_ = rotationCorrectiveDegrees_ = 0;
+            }
+        }
+    }
+
+    private void RefreshWrongDirectionReminder(OVRCameraRig rig)
+    {
+        if (rotationWrongDirectionUI_ == null) return;
+        bool active = evaluation.EXP_TYPE == ExperimentType.ET_ROTATION && evaluation.State == ExperimentState.ES_ACTIVE;
+        rotationWrongDirectionUI_.SetActive(active && rotationReminderVisible_);
+        if (!active)
+        {
+            rotationReminderVisible_ = rotationReminderNeedsPosition_ = false;
+            rotationWrongWayDegrees_ = rotationCorrectiveDegrees_ = 0;
+        }
+        else if (rotationReminderVisible_ && rotationReminderNeedsPosition_)
+        {
+            rotationWrongDirectionLabel_.text = "Turn " + evaluation.ActiveTrial.TurnDirection.ToString().ToUpperInvariant();
+            PositionRotationSign(rotationWrongDirectionUI_, rig.centerEyeAnchor);
+            rotationReminderNeedsPosition_ = false;
+        }
     }
 
     // Headset keypad adapted from Christian/Logan's e85fe08 team contribution.
@@ -395,25 +515,24 @@ public class RedirectionController : MonoBehaviour
         if (rotation)
         {
             AddPanelBackground(questionUI_);
-            CreatePanelText(questionUI_, "Title", "Stop turning and rate the experience", 245, 32, font, true);
-            rotationTrialLabel_ = CreatePanelText(questionUI_, "Trial", "", 185, 24, font);
-            CreatePanelText(questionUI_, "Question", "Compared with your physical turning,\nhow fast did your virtual turning feel?", 85, 30, font, false, 105);
+            CreatePanelText(questionUI_, "Title", "Stop turning and rate the experience", 260, 30, font, true);
+            CreatePanelText(questionUI_, "Question", "How did the amount of rotation feel?", 207, 28, font, false, 55);
         }
 
-        int optionCount = Evaluation.RESPONSE_MAX - Evaluation.RESPONSE_MIN + 1;
+        int optionCount = evaluation.ResponseOptionCount;
         questionBoxes_ = new Image[optionCount];
         questionLabels_ = new Text[optionCount];
 
         const float boxSize = 76f;
         const float boxGap = 12f;
-        float boxY = rotation ? -70f : -145f;
-        string[] rotationLabels = { "Much\nslower", "Slower", "Slightly\nslower", "Same\nspeed", "Slightly\nfaster", "Faster", "Much\nfaster" };
+        float boxY = -145f;
+        string[] rotationLabels = { "Uncomfortably smaller", "Comfortably small", "Maybe small", "Maybe large", "Comfortably large", "Uncomfortably larger" };
         float totalWidth = optionCount * boxSize + (optionCount - 1) * boxGap;
         float firstX = -totalWidth * 0.5f + boxSize * 0.5f;
 
         for (int i = 0; i < optionCount; i++)
         {
-            int value = Evaluation.RESPONSE_MIN + i;
+            int value = evaluation.ResponseOptionAt(i);
 
             GameObject boxGO = new GameObject("Answer " + value, typeof(RectTransform), typeof(Image));
             boxGO.transform.SetParent(questionUI_.transform, false);
@@ -422,8 +541,9 @@ public class RedirectionController : MonoBehaviour
             boxRect.anchorMin = new Vector2(0.5f, 0.5f);
             boxRect.anchorMax = new Vector2(0.5f, 0.5f);
             boxRect.pivot = new Vector2(0.5f, 0.5f);
-            boxRect.anchoredPosition = new Vector2(firstX + i * (boxSize + boxGap), boxY);
-            boxRect.sizeDelta = new Vector2(boxSize, rotation ? 145 : boxSize);
+            boxRect.anchoredPosition = rotation ? new Vector2(0f, 145f - 68f * i) :
+                new Vector2(firstX + i * (boxSize + boxGap), boxY);
+            boxRect.sizeDelta = rotation ? new Vector2(700f, 60f) : new Vector2(boxSize, boxSize);
 
             Image boxImage = boxGO.GetComponent<Image>();
             boxImage.raycastTarget = false;
@@ -440,25 +560,25 @@ public class RedirectionController : MonoBehaviour
             RectTransform labelRect = labelGO.GetComponent<RectTransform>();
             labelRect.anchorMin = Vector2.zero;
             labelRect.anchorMax = Vector2.one;
-            labelRect.offsetMin = Vector2.zero;
-            labelRect.offsetMax = Vector2.zero;
+            labelRect.offsetMin = rotation ? new Vector2(20f, 0f) : Vector2.zero;
+            labelRect.offsetMax = rotation ? new Vector2(-10f, 0f) : Vector2.zero;
 
             Text label = labelGO.GetComponent<Text>();
             label.font = font;
-            label.fontSize = rotation ? 20 : 46;
+            label.fontSize = rotation ? 27 : 46;
             label.fontStyle = FontStyle.Bold;
-            label.alignment = TextAnchor.MiddleCenter;
+            label.alignment = rotation ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter;
             label.raycastTarget = false;
             label.color = Color.black;
-            label.text = rotation ? value.ToString() + "\n" + rotationLabels[i] : value.ToString();
+            label.text = rotation ? (value > 0 ? "+" : "") + value + "   " + rotationLabels[i] : value.ToString();
             questionLabels_[i] = label;
         }
 
         CreateQuestionText(
             "Hint",
-            "Flick stick left / right to select, then press A",
-            new Vector2(0f, -250f),
-            24,
+            rotation ? "Flick stick up / down to select, then press A" : "Flick stick left / right to select, then press A",
+            new Vector2(0f, rotation ? -270f : -250f),
+            rotation ? 23 : 24,
             new Color32(70, 70, 70, 255),
             font);
 
@@ -499,14 +619,9 @@ public class RedirectionController : MonoBehaviour
         if (questionBoxes_ == null)
             return;
 
-        if (rotationTrialLabel_ != null)
-            rotationTrialLabel_.text = evaluation.ActiveTrialNumber < 0 ?
-                "Practice " + (-evaluation.ActiveTrialNumber - 1) + " of " + evaluation.PracticeTrialCount :
-                "Recorded trial " + (evaluation.ActiveTrialNumber + 1) + " of " + evaluation.TotalTrials;
-
         for (int i = 0; i < questionBoxes_.Length; i++)
         {
-            int value = Evaluation.RESPONSE_MIN + i;
+            int value = evaluation.ResponseOptionAt(i);
             bool selected = value == evaluation.ResponseSelection;
 
             questionBoxes_[i].color =
@@ -568,12 +683,16 @@ public class RedirectionController : MonoBehaviour
                 evaluation.offsetPos.y + evaluation.resetPos.y);
             Vector3 desiredPosition = resetCorrection * (rawPosition + offset);
             Vector3 translation = desiredPosition - yawCorrection * rawPosition;
-            if (evaluation.State == ExperimentState.ES_INSTRUCTION) translation.y += 1000f - rawPosition.y;
+            if (evaluation.State == ExperimentState.ES_INSTRUCTION && evaluation.EXP_TYPE != ExperimentType.ET_ROTATION)
+                translation.y += 1000f - rawPosition.y;
 
             // Apply one rigid transform to the common parent of BOTH eyes and BOTH hands.
             // Raw anchor poses remain untouched, so stereo/controller alignment is preserved.
             trackingSpace.localRotation = trackingBaseRotation_ * yawCorrection;
             trackingSpace.localPosition = trackingBasePosition_ + trackingBaseRotation_ * translation;
+            // Anchor the cue after applying the tracked pose, so it stays in the same environment.
+            PositionRotationDirection(rig);
+            RefreshWrongDirectionReminder(rig);
         }
         finally { evaluation.insideUpdate = false; }
     }
@@ -613,6 +732,8 @@ public class RedirectionController : MonoBehaviour
             pidUI_.SetActive(evaluation.State == ExperimentState.ES_PID);
         if (rotationIntroUI_ != null)
             rotationIntroUI_.SetActive(evaluation.State == ExperimentState.ES_SLIDES);
+        if (rotationDirectionUI_ != null)
+            rotationDirectionUI_.SetActive(evaluation.State == ExperimentState.ES_INSTRUCTION);
 
         switch (evaluation.State)
         {
@@ -695,18 +816,18 @@ public class RedirectionController : MonoBehaviour
 
                     if (evaluation.EXP_TYPE == ExperimentType.ET_ROTATION)
                     {
-                        // Random parts
                         if (evaluation.ActiveTrialNumber != e_lastTrial)
                         {
                             e_lastTrial = evaluation.ActiveTrialNumber;
-
-                            // Orientation (randomized in 360 degrees)
-                            float r1 = UnityEngine.Random.value; // in [0,1]
-                            evaluation.recenterPose(r1 * (float)Mathf.PI * 2);
-                            RotateWorld(r1 * (float)Mathf.PI * 2 - c_pathYaw);
-
+                            // Preserve the view shown behind the direction cue. Only this trial's
+                            // physical turn adds gain; starting a trial must not reorient the scene.
+                            e_trialYawOffset = evaluation.offsetYaw;
                             evaluation.start_p = evaluation.getPos();
                             evaluation.start_yaw = evaluation.getYaw();
+                            e_lastRawYaw = evaluation.getYaw();
+                            e_accumulatedTurn = 0;
+                            rotationReminderVisible_ = rotationReminderNeedsPosition_ = false;
+                            rotationWrongWayDegrees_ = rotationCorrectiveDegrees_ = 0;
 
                             // Turn angle
                             float r2 = UnityEngine.Random.value; // in [0,1]
@@ -717,9 +838,13 @@ public class RedirectionController : MonoBehaviour
                         }
 
                         // Compute yaw angle
-                        evaluation.reset();
-                        float diff = periodicMinusPeriodic(evaluation.getYaw(), evaluation.start_yaw);
-                        float yaw = evaluation.start_yaw + diff * gain;
+                        float rawYaw = evaluation.getYaw();
+                        float physicalStep = periodicMinusPeriodic(rawYaw, e_lastRawYaw);
+                        e_accumulatedTurn += physicalStep;
+                        e_lastRawYaw = rawYaw;
+                        TrackWrongDirection(physicalStep);
+                        float diff = e_accumulatedTurn;
+                        float yaw = rawYaw + e_trialYawOffset + diff * (gain - 1f);
 
                         // Update orientation
                         evaluation.setYawOffset(yaw);
@@ -727,9 +852,10 @@ public class RedirectionController : MonoBehaviour
                         //                        Debug.Log("TRIAL(" + evaluation.ActiveTrialNumber + ")_MID: yaw(" + diff / DTOR + ") * gain(" + gain + ") ?? angle(" + e_maxAngle / DTOR + ")");
 
                         // Check angle
-                        if (Mathf.Abs(diff) * gain >= e_maxAngle)
+                        if (diff * (int)evaluation.ActiveTrial.TurnDirection * gain >= e_maxAngle)
                         {
                             Debug.Log("TRIAL(" + evaluation.ActiveTrialNumber + ")_END: yaw(" + diff / DTOR + ") * gain(" + gain + ") > angle(" + e_maxAngle / DTOR + ")");
+                            evaluation.writeData("TURN_COMPLETED_" + evaluation.ActiveTrial.TurnDirection.ToString().ToUpperInvariant());
                             //                            Debug.Log("--- statechange: start_yaw=" + evaluation.getYaw() / DTOR + " ; yaw=" + evaluation.start_yaw / DTOR + " ; diff=" + diff / DTOR);
 
                             evaluation.StateChange();
@@ -970,10 +1096,9 @@ public class RedirectionController : MonoBehaviour
 
                     if (evaluation.EXP_TYPE == ExperimentType.ET_ROTATION)
                     {
-                        evaluation.StateChange();
-                        // Initialize this trial's pose/gain in this same anchor update.
-                        // Otherwise one rendered frame inherits the prior trial's offset.
-                        UpdateInternal();
+                        quad_user.GetComponent<Renderer>().enabled = false;
+                        quad.GetComponent<Renderer>().enabled = false;
+                        rotationDirectionLabel_.text = "Turn " + evaluation.ActiveTrial.TurnDirection.ToString().ToUpperInvariant();
                         break;
                     }
 

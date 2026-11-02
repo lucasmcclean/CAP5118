@@ -6,14 +6,14 @@ One group video, maximum five minutes, Quest 3 demonstration, screen recording a
 
 - **0:00-0:15 - Title:** CAP 5118 Replication Project, Advanced Project. Rohan Gudla, Alix Fyall, Logan Georgi, Christian Wagenknecht, Anthony Aubert, Lucas Mcclean. Verify spelling with the group.
 - **0:15-0:45 - Current scene:** show the shared industrial environment running on Quest. Identify which scenes/modes the group prepared.
-- **0:45-1:45 - Rotations:** show anonymous participant-ID setup, one natural rotation trial and the response interface. Include left/right selection and A confirmation. Explain only the scale meaning actually approved by the advisor.
+- **0:45-1:45 - Rotations:** show anonymous participant-ID setup, a direction cue, one natural rotation trial and the response interface. Include up/down selection and A confirmation. Explain only the scale meaning actually approved by the advisor.
 - **1:45-3:00 - Other subgroups:** teammates demonstrate translation and curvature functionality and their relevant changes. Coordinate the footage with them.
 - **3:00-4:15 - Pilot evidence and fixes:** show the real per-member session folders, the measured result rows and completion status. Explain the actual bugs fixed and which checks were performed. Avoid displaying participant names or irrelevant private desktop content.
 - **4:15-4:45 - Ready for evaluation:** briefly explain the written administration procedure, consistent instructions and remaining agreed next steps. Leave timing margin.
 
 ## Rohan's contribution clip - words to adapt after verification
 
-"My part focuses on rotations and pilot reliability. I checked the trial flow and the response controls. The project retains the group's nine gain conditions, with two measured repetitions and five practice trials. We corrected condition selection so every available condition can be selected. The head and controllers now receive the same tracking-space transformation, and the head-locked question panel stays in view. Each session gets a separate folder with its anonymous participant ID, configuration, responses and motion log. Here is [the actual verified pilot output]."
+"My part focuses on rotations and pilot reliability. I checked the trial flow and the response controls. The revised demo balances the nine gain conditions across left and right turns, gives a direction cue, and uses a vertical response scale. The head and controllers receive the same tracking-space transformation, and the head-locked question panel stays in view. Each session gets a separate folder with its anonymous participant ID, configuration, responses and motion log. Here is [the actual verified pilot output]."
 
 Only say the scene/headset checks passed after they have run successfully. Do not replace the bracket with synthetic QA output. You may show the software QA separately, explicitly calling it a software test.
 

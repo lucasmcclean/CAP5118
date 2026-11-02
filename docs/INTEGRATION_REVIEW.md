@@ -11,8 +11,12 @@ This branch contains Rohan Gudla's rotation pilot implementation, based on the t
 - `PilotParticipantEntry.cs` provides optional PC-side ID entry; `PilotSessionRecorder.cs` writes separate session folders and invariant numeric data.
 - The already-installed Standalone OpenXR Touch Plus controller profile is enabled. Other local Unity project migrations are excluded.
 - Editor software QA and recorder tests are included; generated outputs and personal pilot datasets are excluded.
+- November 2 presentation update: remove the rotation scene's `ScaleReference` cube and replace the large direction panel with a compact sign anchored in the environment. Rotation cues keep the camera at tracked eye height and preserve its position and heading into the active turn. Each trial's gain applies to new physical rotation from that continuous starting view. The legacy instruction repositioning for other experiment types is unchanged. New session metadata records this presentation revision.
 
 ## Verification
+
+- November 2 revised scene QA passed 1,644 assertions and 1,760 synthetic pose checks, including all three practice and 72 measured trials, four repetitions per gain per direction, vertical comfort responses, continuous camera pose and wrong-direction reminder behavior. The exported synthetic session passed the Python validator with `--allow-synthetic`.
+- The standalone Quest APK built and installed successfully. Rohan confirmed the direction sign within the industrial environment, removal of the scale cube, the comfort labels, and the reminder appearing and clearing on a wrong-way test turn. A full revised human session was not established by these presentation checks.
 
 - October 24 Unity scene software QA: 157 assertions and 451 synthetic pose checks, covering five practice and eighteen measured trials. This is software evidence, not human participation.
 - October 24 physical Quest 3 through Link: Rohan completed the five practice and eighteen measured rotation trials, reaching Thank You. The saved session passed the physical-session validator with nine gain conditions repeated twice, complete status, and no synthetic override. The original dataset and its export remain local.
@@ -20,9 +24,9 @@ This branch contains Rohan Gudla's rotation pilot implementation, based on the t
 
 ## Shared response scale and protocol status
 
-The rotation interface has seven choices from -3 through +3, including 0 for the same perceived speed. On October 26, source inspection confirmed that both Christian/Logan's translation repository at `e85fe08` and the shared team repository at `4d8251b` implement this same seven-value range, display all seven choices, and accept zero. Rotation therefore retains the existing team convention; a separate rotation-only question about retaining zero is unnecessary. Metadata still records the wording as a working pilot protocol and leaves `scaleInterpretationConfirmed` false because matching team code is distinct from final advisor approval. The normal project demonstration and advisor review remain required.
+On October 29, Rohan requested that rotation use six choices: -3, -2, -1, +1, +2 and +3, with no zero. This changes the earlier seven-choice rotation pilot and differs from the seven-value implementation observed in Christian/Logan's translation repository and the shared repository on October 26. Session metadata identifies the scale actually used and continues to mark the wording as a working pilot protocol, with `scaleInterpretationConfirmed` false. The normal project demonstration and advisor review remain required.
 
-This branch retains nine gain levels from 0.6 to 1.4, two repetitions, and five practice trials. Do not reinterpret the recorded pilot as a different protocol or alter recorded responses to fit a later scale.
+The current local revision retains the nine gain levels from 0.6 to 1.4 but changes the schedule to three practice trials and 72 measured turns, four per direction per gain. Cues alternate left/right starting with left, and the revised scale uses the comfort labels requested by Rohan. The earlier five-practice/eighteen-measured pilot remains historical evidence for its original protocol; do not reinterpret its responses as the revised protocol.
 
 ## Integration and remaining work
 
