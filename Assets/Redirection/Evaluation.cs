@@ -344,6 +344,14 @@ public class Evaluation : MonoBehaviour
         return Path.Combine(Application.persistentDataPath, name + ".txt");
     }
 
+    private string GetLegacyFilePath(string suffix)
+    {
+        string name = string.IsNullOrEmpty(ParticipantID)
+            ? "og_" + suffix
+            : ParticipantID + "_og_" + suffix;
+        return Path.Combine(Application.persistentDataPath, name + ".txt");
+    }
+
     private float nowMs()
     {
         return Time.realtimeSinceStartup * 1000f - StartTime;
@@ -353,16 +361,11 @@ public class Evaluation : MonoBehaviour
     // participant ID or an existing data file replaces it instead of appending
     private void ResetSessionFiles()
     {
-        File.WriteAllText(
-            Path.Combine(Application.persistentDataPath, "results.txt"),
-            string.Empty);
-
-        File.WriteAllText(
-            Path.Combine(Application.persistentDataPath, "data.txt"),
-            string.Empty);
-
         File.WriteAllText(GetFilePath("results"), string.Empty);
         File.WriteAllText(GetFilePath("data"), string.Empty);
+
+        File.WriteAllText(GetLegacyFilePath("results"), string.Empty);
+        File.WriteAllText(GetLegacyFilePath("data"), string.Empty);
     }
 
 
@@ -416,9 +419,7 @@ public class Evaluation : MonoBehaviour
 
     private void writeLegacyResults()
     {
-        string path = Path.Combine(
-            Application.persistentDataPath,
-            "results.txt");
+        string path = GetLegacyFilePath("results");
 
         using (StreamWriter writer =
                 new StreamWriter(path, false))
@@ -489,10 +490,7 @@ public class Evaluation : MonoBehaviour
 
         if (writeLegacyFile)
         {
-            string path =
-                Path.Combine(
-                    Application.persistentDataPath,
-                    "data.txt");
+            string path = GetLegacyFilePath("data");
 
             File.AppendAllText(
                 path,
@@ -510,10 +508,7 @@ public class Evaluation : MonoBehaviour
         if (ActiveTrialNumber < 0)
             return;
 
-        string path =
-            Path.Combine(
-                Application.persistentDataPath,
-                "data.txt");
+        string path = GetLegacyFilePath("data");
 
         File.AppendAllText(
             path,
