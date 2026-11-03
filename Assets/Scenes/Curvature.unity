@@ -43940,12 +43940,12 @@ MonoBehaviour:
   VALUES_MAX: 1.4
   VALUES_MIN2: 0
   VALUES_MAX2: 0
-  STEPS: 10
+  STEPS: 9
   STEPS2: 1
   TRIALS: 8
   TEST_TRIALS: 4
   EXP_TYPE: 0
-  SKIP_SLIDES: 1
+  SKIP_SLIDES: 0
   insideUpdate: 0
   outsidePos: {x: 0, y: 0}
   outsideYaw: 0
@@ -43966,6 +43966,12 @@ MonoBehaviour:
     Step2: 0
     Value: 0
     Value2: 0
+    VirtualYaw: 0
+    StartPos: {x: 0, y: 0}
+    StartYaw: 0
+    TimeStartMs: 0
+    TimeWalkEndMs: 0
+    TimeAnswerMs: 0
   ResponseSelection: 0
   ParticipantID: 
   PidSelectedKey: 4

@@ -289,15 +289,15 @@ public class RedirectionController : MonoBehaviour
                 dirRect.anchorMin = new Vector2(0.5f, 0.5f);
                 dirRect.anchorMax = new Vector2(0.5f, 0.5f);
                 dirRect.pivot = new Vector2(0.5f, 0.5f);
-                dirRect.anchoredPosition = new Vector2(boxX, boxY - boxSize * 0.5f - 20f);
-                dirRect.sizeDelta = new Vector2(140f, 34f);
+                dirRect.anchoredPosition = new Vector2(boxX, boxY - boxSize * 0.5f - 32f);
+                dirRect.sizeDelta = new Vector2(120f, 48f);
 
                 Text dirLabel = dirGO.GetComponent<Text>();
                 dirLabel.font = font;
-                dirLabel.fontSize = 18;
+                dirLabel.fontSize = 16;
                 dirLabel.fontStyle = FontStyle.Bold;
                 dirLabel.alignment = TextAnchor.MiddleCenter;
-                dirLabel.horizontalOverflow = HorizontalWrapMode.Overflow;
+                dirLabel.horizontalOverflow = HorizontalWrapMode.Wrap;
                 dirLabel.verticalOverflow = VerticalWrapMode.Overflow;
                 dirLabel.raycastTarget = false;
                 dirLabel.color = new Color32(40, 40, 40, 255);
@@ -368,12 +368,12 @@ public class RedirectionController : MonoBehaviour
     {
         switch (value)
         {
-            case -3: return "very left";
-            case -2: return "left";
-            case -1: return "slightly left";
-            case 1: return "slightly right";
-            case 2: return "right";
-            case 3: return "very right";
+            case -3: return "uncomfortably left";
+            case -2: return "comfortably left";
+            case -1: return "maybe left";
+            case 1: return "maybe right";
+            case 2: return "comfortably right";
+            case 3: return "uncomfortably right";
             default: return "";
         }
     }
