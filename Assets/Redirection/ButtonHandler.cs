@@ -3,6 +3,8 @@ using UnityEngine;
 public class ButtonHandler : MonoBehaviour
 {
     private float thumbstickThreshold = 0.7f;
+    private const float slidesSkipHoldSeconds = 0.5f;
+    private float slidesSkipHeldTime;
 
     private bool leftTriggered;
     private bool rightTriggered;
@@ -34,7 +36,13 @@ public class ButtonHandler : MonoBehaviour
         if (evaluation.State == ExperimentState.ES_SLIDES
             && OVRInput.Get(OVRInput.Button.One))
         {
-            evaluation.StateChange();
+            slidesSkipHeldTime += Time.deltaTime;
+            if (slidesSkipHeldTime >= slidesSkipHoldSeconds)
+                evaluation.StateChange();
+        }
+        else
+        {
+            slidesSkipHeldTime = 0f;
         }
 
         // B button pressed
