@@ -43943,9 +43943,9 @@ MonoBehaviour:
   STEPS: 9
   STEPS2: 1
   TRIALS: 2
-  TEST_TRIALS: 4
+  TEST_TRIALS: 0
   EXP_TYPE: 0
-  SKIP_SLIDES: 0
+  SKIP_SLIDES: 1
   insideUpdate: 0
   outsidePos: {x: 0, y: 0}
   outsideYaw: 0
