@@ -224,7 +224,8 @@ public class Evaluation : MonoBehaviour
         }
 
         // Choose randomly a number in [0, slots-1]
-        int n = random.Next(0, slots-1);
+        // NOTE: Random.Next's upper bound is exclusive, so use slots (not slots-1).
+        int n = random.Next(0, slots);
 
         int cnt = 0;
         for (int i = 0; i < completedTrials.Length; i++)
