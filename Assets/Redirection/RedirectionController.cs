@@ -993,7 +993,7 @@ public class RedirectionController : MonoBehaviour
 
                     // Check if user is close to center
                     const float POS_THRESHOLD_BROAD = 0.5f;
-                    const float POS_THRESHOLD_FINE = 0.15f;
+                    const float POS_THRESHOLD_FINE = 0.1f;
                     if (pos_rel.magnitude < POS_THRESHOLD_BROAD)
                     {
                         // Draw user marker
@@ -1003,7 +1003,7 @@ public class RedirectionController : MonoBehaviour
                         quad_user.transform.localEulerAngles = new Vector3(0, 0, -theta / (float)DTOR);
 
                         // Check if user is close to start orientation
-                        const float ORI_THRESHOLD = 5.0f * (float)DTOR;
+                        const float ORI_THRESHOLD = 3.5f * (float)DTOR;
                         if (Mathf.Abs(periodicMinusPeriodic(yaw_rel, 0)) < ORI_THRESHOLD && pos_rel.magnitude < POS_THRESHOLD_FINE)
                             evaluation.StateChange();
                     }
