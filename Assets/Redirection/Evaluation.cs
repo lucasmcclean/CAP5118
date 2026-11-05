@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -95,6 +94,7 @@ public class Evaluation : MonoBehaviour
     public const int PID_MAX_LENGTH = 8;
     public string ParticipantID = "";
     public int PidSelectedKey = 4; // 0-11, row-major: 1 2 3 / 4 5 6 / 7 8 9 / Del 0 OK
+    private string sessionTimestamp = "";
     
     public int TotalTrials;
 
@@ -338,17 +338,8 @@ public class Evaluation : MonoBehaviour
     // PID is digits only, so it is always safe to use in a filename
     private string GetFilePath(string suffix)
     {
-        string name = string.IsNullOrEmpty(ParticipantID)
-            ? suffix
-            : ParticipantID + "_" + suffix;
-        return Path.Combine(Application.persistentDataPath, name + ".txt");
-    }
-
-    private string GetLegacyFilePath(string suffix)
-    {
-        string name = string.IsNullOrEmpty(ParticipantID)
-            ? "og_" + suffix
-            : ParticipantID + "_og_" + suffix;
+        string pid = string.IsNullOrEmpty(ParticipantID) ? "pid" : ParticipantID;
+        string name = pid + "_" + sessionTimestamp + "_" + suffix;
         return Path.Combine(Application.persistentDataPath, name + ".txt");
     }
 
@@ -363,9 +354,6 @@ public class Evaluation : MonoBehaviour
     {
         File.WriteAllText(GetFilePath("results"), string.Empty);
         File.WriteAllText(GetFilePath("data"), string.Empty);
-
-        File.WriteAllText(GetLegacyFilePath("results"), string.Empty);
-        File.WriteAllText(GetLegacyFilePath("data"), string.Empty);
     }
 
 
@@ -413,13 +401,7 @@ public class Evaluation : MonoBehaviour
         if (ActiveTrialNumber < 0)
             return;
 
-        writeLegacyResults();
-        writePidResults();
-    }
-
-    private void writeLegacyResults()
-    {
-        string path = GetLegacyFilePath("results");
+        string path = GetFilePath("results");
 
         using (StreamWriter writer =
                 new StreamWriter(path, false))
@@ -429,43 +411,7 @@ public class Evaluation : MonoBehaviour
             {
                 Trial trial = allTrials[i];
 
-                writer.WriteLine($"{trial.Value}\t{trial.Value2}\t{trial.Reaction}\t{trial.Response}");
-            }
-        }
-
-//        Debug.Log("path (" + path + ")");
-    }
-
-    private void writePidResults()
-    {
-        using (StreamWriter writer =
-                new StreamWriter(GetFilePath("results"), false))
-        {
-            writer.WriteLine(ParticipantID);
-            writer.WriteLine(
-                "trial\tstep\tstep2\tgain\tgain2\treaction\tresponse\t" +
-                "rot_deg\tstart_x\tstart_y\tstart_yaw_deg\t" +
-                "t_start_ms\tt_walk_end_ms\tt_answer_ms");
-
-            for (int i = 0; i <= Mathf.Min(TotalTrials - 1, ActiveTrialNumber); i++)
-            {
-                Trial trial = allTrials[i];
-
-                writer.WriteLine(string.Join("\t",
-                    i.ToString(CultureInfo.InvariantCulture),
-                    trial.Step.ToString(CultureInfo.InvariantCulture),
-                    trial.Step2.ToString(CultureInfo.InvariantCulture),
-                    trial.Value.ToString(CultureInfo.InvariantCulture),
-                    trial.Value2.ToString(CultureInfo.InvariantCulture),
-                    trial.Reaction.ToString(),
-                    trial.Response.ToString(CultureInfo.InvariantCulture),
-                    (trial.VirtualYaw * Mathf.Rad2Deg).ToString("F3", CultureInfo.InvariantCulture),
-                    trial.StartPos.x.ToString("F4", CultureInfo.InvariantCulture),
-                    trial.StartPos.y.ToString("F4", CultureInfo.InvariantCulture),
-                    (trial.StartYaw * Mathf.Rad2Deg).ToString("F3", CultureInfo.InvariantCulture),
-                    trial.TimeStartMs.ToString("F1", CultureInfo.InvariantCulture),
-                    trial.TimeWalkEndMs.ToString("F1", CultureInfo.InvariantCulture),
-                    trial.TimeAnswerMs.ToString("F1", CultureInfo.InvariantCulture)));
+                writer.WriteLine($"{trial.Value}\t{trial.Value2}\t{trial.Response}");
             }
         }
     }
@@ -476,8 +422,7 @@ public class Evaluation : MonoBehaviour
         float virtualX,
         float virtualY,
         float realYaw,
-        float virtualYaw,
-        bool writeLegacyFile = true)
+        float virtualYaw)
     {
         if (ActiveTrialNumber < 0)
             return;
@@ -488,18 +433,8 @@ public class Evaluation : MonoBehaviour
             $"{realYaw}\t" +
             $"{virtualYaw}";
 
-        if (writeLegacyFile)
-        {
-            string path = GetLegacyFilePath("data");
-
-            File.AppendAllText(
-                path,
-                line + Environment.NewLine);
-        }
-
-        string pidPath = GetFilePath("data");
         File.AppendAllText(
-            pidPath,
+            GetFilePath("data"),
             line + Environment.NewLine);
     }
 
@@ -508,15 +443,8 @@ public class Evaluation : MonoBehaviour
         if (ActiveTrialNumber < 0)
             return;
 
-        string path = GetLegacyFilePath("data");
-
         File.AppendAllText(
-            path,
-            "\n\n" + text + "\n\n");
-
-        string pidPath = GetFilePath("data");
-        File.AppendAllText(
-            pidPath,
+            GetFilePath("data"),
             "\n\n" + text + "\n\n");
     }
 
@@ -542,8 +470,8 @@ public class Evaluation : MonoBehaviour
 
             case ExperimentState.ES_PID:
                 State = ExperimentState.ES_SLIDES;
+                sessionTimestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 ResetSessionFiles();
-                File.AppendAllText(GetFilePath("data"), "PID: " + ParticipantID + Environment.NewLine);
                 writeData("ES_SLIDES");
                 StartTime = Time.realtimeSinceStartup * 1000f;
                 recenterPose();

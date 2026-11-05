@@ -852,8 +852,7 @@ public class RedirectionController : MonoBehaviour
                                 pt.x,
                                 pt.y,
                                 realYaw / (float)DTOR,
-                                theta / (float)DTOR,
-                                false);
+                                theta / (float)DTOR);
 
                             // Check walk distance
                             if (Mathf.Abs(pt.y) >= evaluation.DISTANCE)
